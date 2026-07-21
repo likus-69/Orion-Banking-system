@@ -1,7 +1,7 @@
 # 1. Define your data at the top so Python knows it exists
 user_data = {
     "user_1": {
-        "x": 75005750990694396,
+        "x": 75005750990694,
         "y": "Mary Garcia"
     },
     "user_2": {
