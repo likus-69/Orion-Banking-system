@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orion Banking Inc.</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+      width: 100%;
+      max-width: 420px;
+      padding: 32px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.5px;
+    }
+
+    .header p {
+      font-size: 0.875rem;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .tabs {
+      display: flex;
+      background: #0f172a;
+      padding: 4px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      font-weight: 600;
+      font-size: 0.875rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background: #334155;
+      color: #ffffff;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      color: #ffffff;
+      font-size: 0.9375rem;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-group input:focus {
+      border-color: #38bdf8;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: #0284c7;
+      border: none;
+      border-radius: 8px;
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      margin-top: 8px;
+    }
+
+    .btn:hover {
+      background: #0369a1;
+    }
+
+    .message {
+      margin-top: 16px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      display: none;
+      text-align: center;
+    }
+
+    .message.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid #10b981;
+      color: #34d399;
+      display: block;
+    }
+
+    .message.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid #ef4444;
+      color: #f87171;
+      display: block;
+    }
+
+    /* Dashboard / Session view */
+    .dashboard {
+      display: none;
+      text-align: center;
+    }
+
+    .account-badge {
+      background: #0f172a;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      margin: 16px 0;
+    }
+
+    .account-badge .acc-num {
+      font-family: monospace;
+      font-size: 1.1rem;
+      color: #38bdf8;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="header">
+      <h1>ORION BANKING INC.</h1>
+      <p>Secure Account Access Portal</p>
+    </div>
+
+    <!-- TABS -->
+    <div class="tabs" id="tabBar">
+      <button class="tab-btn active" onclick="switchTab('signin')">Sign In</button>
+      <button class="tab-btn" onclick="switchTab('signup')">Sign Up</button>
+    </div>
+
+    <!-- SIGN IN FORM -->
+    <form id="signinForm">
+      <div class="form-group">
+        <label for="signinName">User Name</label>
+        <input type="text" id="signinName" placeholder="e.g. Mary Garcia" required>
+      </div>
+      <div class="form-group">
+        <label for="signinAcc">Account Number</label>
+        <input type="number" id="signinAcc" placeholder="e.g. 75005750990694" required>
+      </div>
+      <button type="submit" class="btn">Sign In</button>
+    </form>
+
+    <!-- SIGN UP FORM -->
+    <form id="signupForm" style="display: none;">
+      <div class="form-group">
+        <label for="signupName">Full Name</label>
+        <input type="text" id="signupName" placeholder="e.g. Alex Mercer" required>
+      </div>
+      <button type="submit" class="btn">Create Account</button>
+    </form>
+
+    <!-- ACCOUNT SESSION DASHBOARD -->
+    <div id="dashboard" class="dashboard">
+      <h2 id="dashWelcome" style="font-size: 1.25rem; color: #f8fafc;">Welcome!</h2>
+      <div class="account-badge">
+        <div style="font-size: 0.75rem; color: #94a3b8;">ACCOUNT NUMBER</div>
+        <div id="dashAccNum" class="acc-num">00000000000000</div>
+        <div style="margin-top: 12px; font-size: 0.75rem; color: #94a3b8;">BALANCE</div>
+        <div id="dashBalance" style="font-size: 1.5rem; font-weight: 700; color: #10b981;">$0.00</div>
+      </div>
+      <button class="btn" onclick="signOut()" style="background: #334155;">Sign Out</button>
+    </div>
+
+    <!-- NOTIFICATION MSG -->
+    <div id="msgBox" class="message"></div>
+  </div>
+
+  <script>
+    const API_URL = "http://127.0.0.1:5000/api";
+
+    // Switch between Sign In and Sign Up tabs
+    function switchTab(tab) {
+      const signinForm = document.getElementById("signinForm");
+      const signupForm = document.getElementById("signupForm");
+      const tabs = document.querySelectorAll(".tab-btn");
+      hideMessage();
+
+      if (tab === 'signin') {
+        signinForm.style.display = "block";
+        signupForm.style.display = "none";
+        tabs[0].classList.add("active");
+        tabs[1].classList.remove("active");
+      } else {
+        signinForm.style.display = "none";
+        signupForm.style.display = "block";
+        tabs[0].classList.remove("active");
+        tabs[1].classList.add("active");
+      }
+    }
+
+    // Handle Sign In submission
+    document.getElementById("signinForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("signinName").value;
+      const accountNumber = document.getElementById("signinAcc").value;
+
+      try {
+        const res = await fetch(`${API_URL}/signin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, account_number: accountNumber })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          showDashboard(data.user);
+        } else {
+          showMessage(data.message, "error");
+        }
+      } catch (err) {
+        showMessage("Cannot reach Python server. Make sure app.py is running.", "error");
+      }
+    });
+
+    // Handle Sign Up submission
+    document.getElementById("signupForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("signupName").value;
+
+      try {
+        const res = await fetch(`${API_URL}/signup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          showMessage(`Account created! Your account number is: ${data.user.account_number}`, "success");
+          document.getElementById("signupName").value = "";
+        } else {
+          showMessage(data.message, "error");
+        }
+      } catch (err) {
+        showMessage("Cannot reach Python server. Make sure app.py is running.", "error");
+      }
+    });
+
+    // UI State Helpers
+    function showDashboard(user) {
+      document.getElementById("signinForm").style.display = "none";
+      document.getElementById("signupForm").style.display = "none";
+      document.getElementById("tabBar").style.display = "none";
+      hideMessage();
+
+      document.getElementById("dashWelcome").textContent = `Welcome, ${user.username}!`;
+      document.getElementById("dashAccNum").textContent = user.account_number;
+      document.getElementById("dashBalance").textContent = `$${parseFloat(user.balance).toFixed(2)}`;
+      document.getElementById("dashboard").style.display = "block";
+    }
+
+    function signOut() {
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("tabBar").style.display = "flex";
+      switchTab('signin');
+    }
+
+    function showMessage(msg, type) {
+      const box = document.getElementById("msgBox");
+      box.textContent = msg;
+      box.className = `message ${type}`;
+    }
+
+    function hideMessage() {
+      const box = document.getElementById("msgBox");
+      box.style.display = "none";
+    }
+  </script>
+</body>
+</html>
