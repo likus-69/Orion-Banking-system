@@ -47,5 +47,21 @@ if inup == 1: # Assuming this is your choice variable
         print(f"Welcome {y} to your secure access tunnel.")
     else:
         print("Login Failed.")
+elif inup == 0:
+    print("\n--- Orion Banking Sign Up ---")
+    new_username = input("Enter your full name: ")
+    new_account_no = random.randint(10000000000000, 99999999999999)
+    new_user_key = f"user_{len(user_data) + 1}"
+    
+    user_data[new_user_key] = {
+        "y": new_username,
+        "x": new_account_no
+    }
+    
+    print("\nAccount Created Successfully!")
+    print(f"Welcome to Orion Banking, {new_username}!")
+    print(f"Your assigned Account Number is: {new_account_no}")
+    print("Please keep this account number safe for signing in.")
+
 else:
-    print("Come tomorrow.")
+    print("Invalid choice. Please enter 1 to Sign In or 0 to Sign Up.")
