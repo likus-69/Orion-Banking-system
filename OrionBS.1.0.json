@@ -1,1 +1,37 @@
-
+{
+  "user_1": {
+    "x": 75005750990694,
+    "y": "Mary Garcia",
+    "pin": "1234",
+    "balance": 1000.0,
+    "history": []
+  },
+  "user_2": {
+    "x": 48291038475912,
+    "y": "John Smith",
+    "pin": "1234",
+    "balance": 10000.0,
+    "history": []
+  },
+  "user_3": {
+    "x": 91823746501923,
+    "y": "Amina Uwase",
+    "pin": "1234",
+    "balance": 5000.0,
+    "history": []
+  },
+  "user_4": {
+    "x": 37192847561029,
+    "y": "David Lee",
+    "pin": "1234",
+    "balance": 0.05,
+    "history": []
+  },
+  "user_5": {
+    "x": 65410293847516,
+    "y": "Grace Namubiru",
+    "pin": "1234",
+    "balance": 1500.0,
+    "history": []
+  }
+}
