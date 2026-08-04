@@ -1,4 +1,5 @@
 import random
+
 user_data = {
     "user_1": {
         "x": 75005750990694,
