@@ -1,0 +1,41 @@
+{# Base layout for all Orion pages. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}Orion Banking — secure online banking.{% endblock %}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <canvas id="stars" aria-hidden="true"></canvas>
+
+  <nav class="topnav" role="navigation">
+    <div class="mark">◇ Orion Banking Inc.</div>
+    <div class="links">
+      {% block nav_links %}{% endblock %}
+      <button class="theme-toggle" aria-label="Toggle dark/light theme"></button>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer>
+    <div>◇ Orion Banking Inc. — All rights reserved.</div>
+    <div>Env: <code>{{ env }}</code> · v1.0.0</div>
+  </footer>
+
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/ui.js"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

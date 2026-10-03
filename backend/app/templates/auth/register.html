@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Sign up — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/login'">Sign In</button>
+  <button class="active" aria-current="page">Sign Up</button>
+{% endblock %}
+
+{% block content %}
+<header class="brand">
+  <div class="mark">Guided by Orion</div>
+  <h1>Open an account.</h1>
+  <p>We'll issue you a new account number instantly.</p>
+</header>
+
+<div class="card" style="max-width:460px;">
+  <h2>Create account</h2>
+  <p class="sub">Use a strong PIN — avoid 1234, 1111, and other obvious sequences.</p>
+
+  <form id="registerForm" autocomplete="off" novalidate>
+    <label for="fullName">Full name</label>
+    <input id="fullName" name="full_name" type="text" autocomplete="name"
+           placeholder="e.g. Alex Rivera" required minlength="2" maxlength="255">
+
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email"
+           placeholder="you@example.com" required>
+
+    <label for="pin">Choose a PIN (4-6 digits)</label>
+    <input id="pin" name="pin" type="password" inputmode="numeric"
+           minlength="4" maxlength="6" placeholder="••••" required>
+
+    <label for="pinConfirm">Confirm PIN</label>
+    <input id="pinConfirm" type="password" inputmode="numeric"
+           maxlength="6" placeholder="••••" required>
+
+    <button type="submit" class="btn" id="registerSubmit">Create Account</button>
+    <div class="msg" id="registerMsg" role="alert" aria-live="polite"></div>
+  </form>
+
+  <div class="hint">
+    Already have an account? <a href="/login"><b>Sign in →</b></a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    const form = document.getElementById('registerForm');
+    const msg = document.getElementById('registerMsg');
+    const submit = document.getElementById('registerSubmit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.className = 'msg';
+      const fullName = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const pin = document.getElementById('pin').value;
+      const pinConfirm = document.getElementById('pinConfirm').value;
+      if (!fullName || !email || !pin) {
+        msg.className = 'msg err show';
+        msg.textContent = 'All fields are required.';
+        return;
+      }
+      if (pin !== pinConfirm) {
+        msg.className = 'msg err show';
+        msg.textContent = 'PINs do not match.';
+        return;
+      }
+
+      submit.disabled = true;
+      submit.textContent = 'Creating account…';
+      try {
+        const r = await OrionAPI.register({ full_name: fullName, email, pin });
+        if (r.ok) {
+          OrionUI.toast('Account created! Please sign in.', 'success', 3000);
+          setTimeout(() => { window.location.href = '/login'; }, 800);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r.data?.error?.message || 'Could not create account.';
+          submit.disabled = false;
+          submit.textContent = 'Create Account';
+        }
+      } catch (err) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error. Please try again.';
+        submit.disabled = false;
+        submit.textContent = 'Create Account';
+      }
+    });
+  })();
+</script>
+{% endblock %}

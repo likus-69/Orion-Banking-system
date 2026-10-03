@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Transactions — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button class="active" aria-current="page">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Full record</div>
+      <h2>Transaction history</h2>
+      <div class="acc" id="histAcc"></div>
+    </div>
+    <a href="/api/statements/export.pdf" class="btn ghost icon" target="_blank" rel="noopener">↓ Statement PDF</a>
+  </div>
+
+  <div class="section-card">
+    <div class="filter-row" id="histFilters">
+      <button data-f="all" class="active">All</button>
+      <button data-f="deposit">Deposits</button>
+      <button data-f="withdrawal">Withdrawals</button>
+      <button data-f="transfer">Transfers</button>
+    </div>
+    <ul class="history" id="historyList">
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+
+    let allTxs = [];
+    let filter = 'all';
+
+    async function load() {
+      try {
+        allTxs = await OrionAPI.listTransactions({ skip: 0, limit: 200 });
+        render();
+      } catch (err) {
+        OrionUI.toast('Could not load transactions.', 'error');
+      }
+    }
+
+    function render() {
+      const ul = document.getElementById('historyList');
+      ul.innerHTML = '';
+      const filtered = filter === 'all'
+        ? allTxs
+        : allTxs.filter((t) => t.type === filter);
+
+      if (filtered.length === 0) {
+        ul.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">◇</div>
+            <h4>No transactions yet</h4>
+            <p>Make your first deposit to see it here.</p>
+          </div>`;
+        return;
+      }
+      for (const t of filtered) {
+        const isOut = t.direction === 'outgoing';
+        const sign = isOut ? '−' : '+';
+        const amtCls = isOut ? 'neg' : 'pos';
+        const dotCls = t.type === 'deposit' ? 'deposit'
+          : t.type === 'withdrawal' ? 'withdrawal' : 'transfer';
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="dot ${dotCls}"></span>
+          <div style="flex:1;">
+            <strong>${t.type}</strong>
+            ${t.counterparty_name ? ` · ${t.counterparty_name}` : ''}
+            ${t.memo ? `<div style="color:var(--text-dim);font-size:12px;">${escapeHtml(t.memo)}</div>` : ''}
+            <span class="time">${OrionUI.fmtDate(t.created_at)} · ref ${t.reference}</span>
+          </div>
+          <span class="amt ${amtCls}">${sign}$${Number(t.amount).toFixed(2)}</span>`;
+        li.addEventListener('click', () => {
+          window.location.href = `/transactions/${t.id}`;
+        });
+        ul.appendChild(li);
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    document.getElementById('histFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-f]');
+      if (!btn) return;
+      document.querySelectorAll('#histFilters button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      filter = btn.dataset.f;
+      render();
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

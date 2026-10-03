@@ -1,0 +1,47 @@
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ── Testing / coverage ──────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+
+# ── Local data ──────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+orion_banking.db
+backend/orion_banking.db
+
+# ── Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ── Editor / OS ─────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ── Build artifacts ─────────────────────────────────────────────
+dist/
+build/
+node_modules/
+
+# ── Reports / PDFs generated at runtime ─────────────────────────
+*.log

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Profile — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button class="active" aria-current="page">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Your account</div>
+      <h2>Profile</h2>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Profile picture</h3>
+    <p class="sub">Shown next to your name across Orion Banking.</p>
+    <div class="avatar-row">
+      <div class="avatar" id="profileAvatar">—</div>
+      <div class="avatar-actions">
+        <label class="btn ghost icon" for="avatarFile" style="cursor:pointer;">Upload photo</label>
+        <input type="file" id="avatarFile" accept="image/*">
+        <button class="btn ghost icon" id="removeAvatarBtn">Remove photo</button>
+      </div>
+    </div>
+    <div class="msg" id="avatarMsg" role="alert" aria-live="polite"></div>
+  </div>
+
+  <div class="section-card">
+    <h3>Personal information</h3>
+    <p class="sub">Update your name and contact details.</p>
+    <form id="profileForm" autocomplete="off" novalidate>
+      <label for="profileName">Full name</label>
+      <input id="profileName" type="text" placeholder="e.g. Alex Rivera" required>
+      <label for="profileEmail">Email</label>
+      <input id="profileEmail" type="email" disabled>
+      <label for="profilePhone">Phone</label>
+      <input id="profilePhone" type="tel" placeholder="+1 555 010 1234">
+      <button type="submit" class="btn">Save changes</button>
+      <div class="msg" id="profileMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div class="section-card">
+    <h3>Account details</h3>
+    <p class="sub">Reference information for your account.</p>
+    <div class="list-row">
+      <div class="info"><span>Account number</span></div>
+      <div><code id="acctNum"></code></div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>KYC status</span></div>
+      <div><span class="badge" id="kycStatus">—</span></div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>Member since</span></div>
+      <div><code id="memberSince"></code></div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>Current balance</span></div>
+      <div><strong id="currentBalance"></strong></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+
+    async function load() {
+      try {
+        const me = await OrionAPI.me();
+        const initials = (me.full_name || '?').split(/\s+/).slice(0, 2).map((s) => s[0]?.toUpperCase() || '').join('') || '?';
+        document.getElementById('profileAvatar').textContent = initials;
+        document.getElementById('profileName').value = me.full_name || '';
+        document.getElementById('profileEmail').value = me.email || '';
+        document.getElementById('profilePhone').value = me.phone || '';
+        document.getElementById('acctNum').textContent = me.account_number;
+        const kycEl = document.getElementById('kycStatus');
+        kycEl.textContent = `KYC: ${me.kyc_status.replace('_', ' ')}`;
+        kycEl.className = `badge ${me.kyc_status === 'verified' ? 'success' : me.kyc_status === 'in_review' ? 'warn' : ''}`;
+        document.getElementById('memberSince').textContent = OrionUI.fmtDateShort(me.created_at);
+        document.getElementById('currentBalance').textContent = OrionUI.fmtMoney(me.balance);
+      } catch {
+        OrionUI.toast('Could not load profile.', 'error');
+      }
+    }
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('profileMsg');
+      msg.className = 'msg';
+      const fullName = document.getElementById('profileName').value.trim();
+      const phone = document.getElementById('profilePhone').value.trim();
+      if (!fullName) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Name cannot be empty.';
+        return;
+      }
+      try {
+        const r = await OrionAPI.updateProfile({ full_name: fullName });
+        if (r && r.id) {
+          // Also save phone as KYC
+          if (phone) await OrionAPI.updateKYC({ phone });
+          msg.className = 'msg ok show';
+          msg.textContent = 'Profile updated.';
+          OrionUI.toast('Profile saved', 'success', 2000);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not save.';
+        }
+      } catch {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error.';
+      }
+    });
+
+    document.getElementById('removeAvatarBtn').addEventListener('click', () => {
+      const avatar = document.getElementById('profileAvatar');
+      avatar.textContent = '?';
+      avatar.innerHTML = '';
+      OrionUI.toast('Avatar removed (not persisted in this demo).', 'info', 2500);
+    });
+
+    document.getElementById('avatarFile').addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const avatar = document.getElementById('profileAvatar');
+        avatar.innerHTML = `<img src="${reader.result}" alt="Avatar">`;
+      };
+      reader.readAsDataURL(file);
+      OrionUI.toast('Avatar updated (not persisted in this demo).', 'info', 2500);
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

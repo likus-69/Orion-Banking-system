@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button class="active" aria-current="page">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Secure access tunnel</div>
+      <h2 id="userName">Loading…</h2>
+      <div class="acc" id="userAcc"></div>
+    </div>
+    <span class="badge" id="kycBadge">KYC pending</span>
+  </div>
+
+  <div class="balance-panel">
+    <div class="label">Current balance</div>
+    <div class="amount"><span class="currency">$</span><span id="userBalance">0.00</span></div>
+    <div class="trend" id="balanceTrend"></div>
+  </div>
+
+  <div class="quick-grid">
+    <a href="/deposit"><span class="icon">↓</span>Deposit</a>
+    <a href="/transfer"><span class="icon">→</span>Transfer</a>
+    <a href="/transactions"><span class="icon">≡</span>History</a>
+    <a href="/profile"><span class="icon">⚙</span>Settings</a>
+  </div>
+
+  <div class="section-card">
+    <h3>Recent activity</h3>
+    <p class="sub">Your five most recent transactions.</p>
+    <ul class="history" id="recentHistory">
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+    </ul>
+  </div>
+
+  <div class="chart-card" id="spendingCard" style="display:none;">
+    <h3>Spending breakdown</h3>
+    <p class="sub">Last 30 days · by transaction type</p>
+    <canvas id="spendingChart" width="320" height="240"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+
+    async function load() {
+      try {
+        const [user, txs] = await Promise.all([
+          OrionAPI.me(),
+          OrionAPI.listTransactions({ skip: 0, limit: 5 }),
+        ]);
+        document.getElementById('userName').textContent = user.full_name;
+        document.getElementById('userAcc').textContent =
+          `Account •••• ${user.account_number.slice(-4)} · ${user.email}`;
+        document.getElementById('userBalance').textContent =
+          Number(user.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        const kycBadge = document.getElementById('kycBadge');
+        const kycClass = {
+          pending: '',
+          in_review: 'warn',
+          verified: 'success',
+        }[user.kyc_status] || '';
+        kycBadge.className = `badge ${kycClass}`;
+        kycBadge.textContent = `KYC: ${user.kyc_status.replace('_', ' ')}`;
+
+        renderRecent(txs);
+        renderChart(txs);
+      } catch (err) {
+        OrionUI.toast('Could not load your account.', 'error');
+      }
+    }
+
+    function renderRecent(txs) {
+      const ul = document.getElementById('recentHistory');
+      ul.innerHTML = '';
+      if (!txs || txs.length === 0) {
+        ul.innerHTML = `<li class="empty">No transactions yet — make your first deposit.</li>`;
+        return;
+      }
+      for (const t of txs.slice(0, 5)) {
+        const isOut = t.direction === 'outgoing';
+        const sign = isOut ? '−' : '+';
+        const amtCls = isOut ? 'neg' : 'pos';
+        const dotCls = t.type === 'deposit' ? 'deposit'
+          : t.type === 'withdrawal' ? 'withdrawal' : 'transfer';
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="dot ${dotCls}"></span>
+          <div style="flex:1;">
+            <strong>${t.type}</strong>
+            ${t.counterparty_name ? ` · ${t.counterparty_name}` : ''}
+            ${t.memo ? `<div style="color:var(--text-dim);font-size:12px;">${escapeHtml(t.memo)}</div>` : ''}
+            <span class="time">${OrionUI.fmtDate(t.created_at)}</span>
+          </div>
+          <span class="amt ${amtCls}">${sign}$${Number(t.amount).toFixed(2)}</span>`;
+        li.addEventListener('click', () => {
+          window.location.href = `/transactions/${t.id}`;
+        });
+        ul.appendChild(li);
+      }
+    }
+
+    function renderChart(txs) {
+      if (!txs || txs.length === 0) return;
+      const card = document.getElementById('spendingCard');
+      card.style.display = 'block';
+      const ctx = document.getElementById('spendingChart').getContext('2d');
+      const byType = { deposit: 0, withdrawal: 0, transfer: 0 };
+      for (const t of txs) byType[t.type] = (byType[t.type] || 0) + Number(t.amount);
+      new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Deposits', 'Withdrawals', 'Transfers'],
+          datasets: [{
+            data: [byType.deposit, byType.withdrawal, byType.transfer],
+            backgroundColor: ['#5fbe8a', '#d9727f', '#7fb8d9'],
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#9aa6bd', font: { size: 12 } } } },
+        },
+      });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    load();
+  })();
+</script>
+{% endblock %}

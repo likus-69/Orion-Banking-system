@@ -1,0 +1,220 @@
+/* ============================================================
+   Orion Banking — Base styles
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--fs-md);
+  line-height: var(--lh-relaxed);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--transition-med), color var(--transition-med);
+}
+
+#stars {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+}
+
+a {
+  color: var(--info);
+  text-decoration: none;
+}
+a:hover { text-decoration: underline; }
+
+/* ── Top navigation ─────────────────────────────────────────── */
+nav.topnav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) 28px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+nav.topnav .mark {
+  font-family: var(--font-display);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  font-size: 13px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+nav.topnav .links {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+nav.topnav .links button {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  padding: var(--space-2) 14px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: var(--transition-fast);
+}
+nav.topnav .links button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+nav.topnav .links button.active {
+  color: var(--bg);
+  background: var(--accent);
+  font-weight: 600;
+}
+nav.topnav .links button.danger { color: var(--danger); }
+nav.topnav .links button.danger:hover { border-color: var(--danger); }
+
+nav.topnav .theme-toggle {
+  margin-left: var(--space-2);
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: var(--radius-full);
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  transition: var(--transition-fast);
+}
+nav.topnav .theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Page shell ─────────────────────────────────────────────── */
+.wrap {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - var(--topnav-height));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-12) var(--space-5) var(--space-16);
+}
+
+header.brand {
+  text-align: center;
+  margin-bottom: var(--space-9, 36px);
+}
+header.brand .mark {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: var(--space-2);
+}
+header.brand h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(28px, 5vw, 44px);
+  margin: 0;
+}
+header.brand p {
+  color: var(--text-dim);
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-md);
+}
+
+/* ── Footer ────────────────────────────────────────────────── */
+footer {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  padding: 0 var(--space-5) var(--space-8);
+  letter-spacing: 0.03em;
+}
+
+/* ── Page blocks (auth/dashboard/etc.) ──────────────────────── */
+.page {
+  width: 100%;
+  max-width: var(--page-max-width);
+}
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.page-head .who .eyebrow {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.page-head .who h2 {
+  font-family: var(--font-display);
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+}
+.page-head .who .acc {
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  margin-top: var(--space-1);
+}
+
+/* ── Hidden util ────────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── Loading skeleton ───────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-panel) 50%, transparent) 0%,
+    color-mix(in srgb, var(--text-dim) 20%, transparent) 50%,
+    color-mix(in srgb, var(--bg-panel) 50%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-md);
+  height: 1em;
+  width: 100%;
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  nav.topnav { padding: var(--space-3) var(--space-4); }
+  .wrap { padding: var(--space-8) var(--space-4) var(--space-12); }
+}

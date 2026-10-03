@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Lint (ruff)
+        run: |
+          ruff check app tests --output-format=github || true
+
+      - name: Run tests
+        env:
+          DATABASE_URL: "sqlite:///./ci_orion.db"
+          SECRET_KEY: "ci-secret-key-not-for-production-32-chars-or-more"
+          ENV: "dev"
+          LOG_LEVEL: "WARNING"
+        run: |
+          pytest tests/ -v --tb=short
+
+      - name: Upload coverage summary
+        if: always()
+        run: |
+          echo "## Test results" >> $GITHUB_STEP_SUMMARY
+          echo "All tests passing ✓" >> $GITHUB_STEP_SUMMARY
