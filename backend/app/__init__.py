@@ -1,3 +1,3 @@
-from app.database import Base
+from app.models import AuditLog, Transaction, User
 
-__all__ = ["Base"]
+__all__ = ["User", "Transaction", "AuditLog"]

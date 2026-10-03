@@ -5,7 +5,7 @@ from app.database import Base, engine
 from app.routes.accounts import router as accounts_router
 from app.routes.auth import router as auth_router
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_name, version="0.1.0")
 
 
 @app.get("/health")

@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.user import User
-from app.services.auth_service import create_access_token, get_current_user, hash_pin, verify_pin
-from app.schemas.user import DepositRequest, Token, TransferRequest, UserCreate, UserLogin, UserResponse
+from app.models.user import Transaction, User
+from app.schemas.user import DepositRequest, TransferRequest, UserResponse
+from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
@@ -20,7 +20,16 @@ def deposit_funds(payload: DepositRequest, current_user: User = Depends(get_curr
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount must be greater than zero")
 
     current_user.balance += payload.amount
-    db.add(current_user)
+    db.add(
+        Transaction(
+            from_account_id=None,
+            to_account_id=current_user.id,
+            type="deposit",
+            amount=payload.amount,
+            memo=payload.memo,
+            status="completed",
+        )
+    )
     db.commit()
     return {"message": "Deposit successful", "balance": float(current_user.balance)}
 
@@ -33,7 +42,16 @@ def withdraw_funds(payload: DepositRequest, current_user: User = Depends(get_cur
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient funds")
 
     current_user.balance -= payload.amount
-    db.add(current_user)
+    db.add(
+        Transaction(
+            from_account_id=current_user.id,
+            to_account_id=None,
+            type="withdrawal",
+            amount=payload.amount,
+            memo=payload.memo,
+            status="completed",
+        )
+    )
     db.commit()
     return {"message": "Withdrawal successful", "balance": float(current_user.balance)}
 
@@ -52,6 +70,19 @@ def transfer_funds(payload: TransferRequest, current_user: User = Depends(get_cu
 
     current_user.balance -= payload.amount
     recipient.balance += payload.amount
-    db.add_all([current_user, recipient])
+    db.add_all(
+        [
+            Transaction(
+                from_account_id=current_user.id,
+                to_account_id=recipient.id,
+                type="transfer",
+                amount=payload.amount,
+                memo=payload.memo,
+                status="completed",
+            ),
+            current_user,
+            recipient,
+        ]
+    )
     db.commit()
     return {"message": "Transfer successful", "balance": float(current_user.balance)}
