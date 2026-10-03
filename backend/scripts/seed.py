@@ -22,7 +22,7 @@ os.environ.setdefault("ENV", "dev")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
-from app.models.user import User  # noqa: E402
+from app.models.user import KycStatus, User, UserRole  # noqa: E402
 from app.models.transaction import (  # noqa: E402
     Transaction,
     TransactionCategory,
@@ -43,7 +43,8 @@ DEMO_USERS = [
         "phone": "+1-555-010-1234",
         "city": "Kampala",
         "country": "Uganda",
-        "kyc_status": "verified",
+        "kyc_status": KycStatus.verified,
+        "role": UserRole.customer,
     },
     {
         "full_name": "Alex Rivera",
@@ -53,13 +54,24 @@ DEMO_USERS = [
         "phone": "+1-555-020-9876",
         "city": "Nairobi",
         "country": "Kenya",
-        "kyc_status": "in_review",
+        "kyc_status": KycStatus.in_review,  # shows up in admin KYC queue
+        "role": UserRole.customer,
     },
     {
         "full_name": "Demo User",
         "email": "demo@orionbank.com",
         "pin": "4242",
         "balance": 0.00,
+        "kyc_status": KycStatus.pending,
+        "role": UserRole.customer,
+    },
+    {
+        "full_name": "Site Admin",
+        "email": "admin@orionbank.com",
+        "pin": "1357",
+        "balance": 0.00,
+        "kyc_status": KycStatus.verified,
+        "role": UserRole.admin,
     },
 ]
 
@@ -98,7 +110,8 @@ def seed() -> None:
                 phone=u.get("phone"),
                 city=u.get("city"),
                 country=u.get("country"),
-                kyc_status=u.get("kyc_status", "pending"),
+                kyc_status=u.get("kyc_status", KycStatus.pending),
+                role=u.get("role", UserRole.customer),
                 is_active=True,
                 is_locked=False,
             )
@@ -108,10 +121,10 @@ def seed() -> None:
                 AuditLog(
                     user_id=user.id,
                     action="register",
-                    details=f"Seeded account {user.account_number}",
+                    details=f"Seeded account {user.account_number} (role={user.role.value})",
                 )
             )
-            print(f"  created: {u['email']}  (account {user.account_number})  PIN: {u['pin']}")
+            print(f"  created: {u['email']}  (account {user.account_number})  PIN: {u['pin']}  role: {u.get('role', UserRole.customer).value}")
             created_users.append(user)
 
         db.commit()

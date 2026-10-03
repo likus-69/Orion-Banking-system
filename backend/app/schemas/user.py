@@ -7,6 +7,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.config import settings
+from app.models.user import KycStatus, UserRole
 
 
 # ── Auth ──────────────────────────────────────────────────────────
@@ -47,11 +48,13 @@ class UserOut(BaseModel):
     full_name: str
     email: str
     balance: float  # serialised from DECIMAL — see serializer below
+    role: UserRole
     phone: Optional[str] = None
     address_line: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None
-    kyc_status: str = "pending"
+    kyc_status: KycStatus
+    kyc_rejection_reason: Optional[str] = None
     is_active: bool = True
     created_at: datetime
 

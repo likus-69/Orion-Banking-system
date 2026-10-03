@@ -26,9 +26,10 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Profile page** with avatar, account details
 - **Statement PDF export** (reportlab-generated on the backend)
 - **Toast notifications**, loading skeletons, empty states, optimistic UI updates, accessibility (ARIA, keyboard nav)
+- **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
 
 ### Testing
-- 29 pytest tests covering auth, accounts, transactions, statements, notifications
+- 48 pytest tests covering auth, accounts, transactions, statements, notifications, and the admin panel
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -67,13 +68,14 @@ For local dev, SQLite works out of the box — no Postgres needed.
 python scripts/seed.py
 ```
 
-Creates three demo users with sample transactions:
+Creates four demo accounts (3 customers + 1 admin) with sample transactions:
 
-| Email                          | PIN   | Balance    |
-| ------------------------------ | ----- | ---------- |
-| mary.garcia@orionbank.com      | 8421  | $12,500.00 |
-| alex.rivera@orionbank.com      | 7351  | $3,200.50  |
-| demo@orionbank.com             | 4242  | $0.00      |
+| Email                          | PIN   | Role     | KYC status  | Balance    |
+| ------------------------------ | ----- | -------- | ----------- | ---------- |
+| mary.garcia@orionbank.com      | 8421  | customer | verified    | $12,500.00 |
+| alex.rivera@orionbank.com      | 7351  | customer | in_review   | $3,200.50  |
+| demo@orionbank.com             | 4242  | customer | pending     | $0.00      |
+| admin@orionbank.com            | 1357  | admin    | verified    | $0.00      |
 
 ### 5. Run the server
 
@@ -82,7 +84,8 @@ uvicorn app.main:app --reload
 ```
 
 Visit:
-- **UI**: http://localhost:8000/login
+- **Customer UI**: http://localhost:8000/login
+- **Admin UI**: http://localhost:8000/admin (login as `admin@orionbank.com` / `1357`)
 - **API docs** (Swagger): http://localhost:8000/api/docs
 - **Health check**: http://localhost:8000/health
 
@@ -187,7 +190,7 @@ uvicorn app.main:app
 - Scheduled / recurring transfers (background task queue)
 - Two-factor authentication (TOTP)
 - Webhooks for transaction events
-- Admin panel for KYC review
+- ~~Admin panel for KYC review~~ ✅ Done
 
 ---
 

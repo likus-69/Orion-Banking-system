@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.logging_config import get_logger
-from app.models.user import User
+from app.models.user import KycStatus, User
 from app.repositories.user_repo import UserRepository
 from app.services.audit_service import AuditService
 
@@ -57,13 +57,16 @@ class AccountService:
             user.country = country
         if date_of_birth is not None:
             user.date_of_birth = date_of_birth
-        # If any KYC field was provided, mark KYC as in-review.
+        # If any KYC field was provided, mark KYC as in-review (resets prior rejection).
         if any(v is not None for v in (phone, address_line, city, country, date_of_birth)):
-            user.kyc_status = "in_review"
+            user.kyc_status = KycStatus.in_review
+            user.kyc_rejection_reason = None
+            user.kyc_reviewed_by = None
+            user.kyc_reviewed_at = None
             self.audit.log(
                 user_id=user.id,
                 action="kyc_updated",
-                details="User submitted KYC information",
+                details="User submitted KYC information for review",
             )
         self.db.commit()
         self.db.refresh(user)

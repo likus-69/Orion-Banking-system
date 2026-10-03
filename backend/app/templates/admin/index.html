@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Admin — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button class="active" aria-current="page">Dashboard</button>
+  <button onclick="window.location.href='/admin/kyc'">KYC Queue</button>
+  <button onclick="window.location.href='/admin/users'">Users</button>
+  <button onclick="window.location.href='/dashboard'" style="margin-left:24px;">← Customer view</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 960px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Admin console</div>
+      <h2>System overview</h2>
+      <div class="acc" id="adminName">Loading…</div>
+    </div>
+  </div>
+
+  <div class="quick-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Total users</div>
+      <div style="font-family: var(--font-display); font-size: 32px; font-weight: 600; margin-top: 8px;" id="statTotalUsers">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Pending KYC</div>
+      <div style="font-family: var(--font-display); font-size: 32px; font-weight: 600; margin-top: 8px; color: var(--accent);" id="statPendingKyc">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Verified KYC</div>
+      <div style="font-family: var(--font-display); font-size: 32px; font-weight: 600; margin-top: 8px; color: var(--success);" id="statVerifiedKyc">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Locked accounts</div>
+      <div style="font-family: var(--font-display); font-size: 32px; font-weight: 600; margin-top: 8px; color: var(--danger);" id="statLocked">—</div>
+    </div>
+  </div>
+
+  <div class="quick-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 16px;">
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Admins</div>
+      <div style="font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-top: 8px;" id="statAdmins">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Rejected KYC</div>
+      <div style="font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-top: 8px; color: var(--danger);" id="statRejectedKyc">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Transactions today</div>
+      <div style="font-family: var(--font-display); font-size: 24px; font-weight: 600; margin-top: 8px;" id="statTxToday">—</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Quick actions</h3>
+    <p class="sub">Jump straight to the most common admin tasks.</p>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <a href="/admin/kyc" class="btn ghost icon" style="width:auto; text-decoration: none;">Review KYC queue →</a>
+      <a href="/admin/users" class="btn ghost icon" style="width:auto; text-decoration: none;">Browse all users →</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    async function load() {
+      try {
+        const [me, stats] = await Promise.all([
+          OrionAPI.me(),
+          fetch('/api/admin/stats').then((r) => r.json()),
+        ]);
+        if (me.role !== 'admin') {
+          OrionUI.toast('Admins only.', 'error', 3000);
+          setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
+          return;
+        }
+        document.getElementById('adminName').textContent =
+          `Signed in as ${me.full_name} · ${me.email}`;
+        document.getElementById('statTotalUsers').textContent = stats.total_users;
+        document.getElementById('statPendingKyc').textContent = stats.pending_kyc;
+        document.getElementById('statVerifiedKyc').textContent = stats.verified_kyc;
+        document.getElementById('statLocked').textContent = stats.locked_accounts;
+        document.getElementById('statAdmins').textContent = stats.total_admins;
+        document.getElementById('statRejectedKyc').textContent = stats.rejected_kyc;
+        document.getElementById('statTxToday').textContent = stats.transactions_today;
+      } catch (err) {
+        OrionUI.toast('Could not load admin stats.', 'error');
+      }
+    }
+    load();
+  })();
+</script>
+{% endblock %}
