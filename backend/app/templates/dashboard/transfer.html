@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Transfer — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button class="active" aria-current="page">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Send to another account</div>
+      <h2>Transfer funds</h2>
+      <div class="acc">Balance: $<span id="trBalanceShown">0.00</span></div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>New transfer</h3>
+    <p class="sub">Move money to another Orion Banking account instantly.</p>
+
+    <form id="transferForm" autocomplete="off" novalidate>
+      <label for="trAcc">Recipient account number</label>
+      <input id="trAcc" type="text" inputmode="numeric"
+             placeholder="e.g. 48291038475912" minlength="14" maxlength="14" required>
+      <div class="msg" id="trWhoMsg" style="margin-top:8px;"></div>
+
+      <div class="row2">
+        <div>
+          <label for="trAmt">Amount (USD)</label>
+          <input id="trAmt" type="number" step="0.01" min="0.01" placeholder="0.00" required>
+        </div>
+        <div>
+          <label for="trMemo">Memo (optional)</label>
+          <input id="trMemo" type="text" maxlength="500" placeholder="e.g. Rent split">
+        </div>
+      </div>
+
+      <button type="submit" class="btn" id="trSubmit">Transfer</button>
+      <div class="msg" id="trMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+
+    async function loadBalance() {
+      try {
+        const me = await OrionAPI.me();
+        document.getElementById('trBalanceShown').textContent = Number(me.balance).toFixed(2);
+      } catch {}
+    }
+
+    const form = document.getElementById('transferForm');
+    const msg = document.getElementById('trMsg');
+    const submit = document.getElementById('trSubmit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.className = 'msg';
+      const acc = document.getElementById('trAcc').value.trim();
+      const amt = parseFloat(document.getElementById('trAmt').value);
+      const memo = document.getElementById('trMemo').value.trim() || null;
+      if (!acc || acc.length !== 14) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Recipient account number must be 14 digits.';
+        return;
+      }
+      if (!amt || amt <= 0) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Amount must be greater than zero.';
+        return;
+      }
+
+      const confirmed = await OrionUI.confirmModal({
+        title: 'Confirm transfer',
+        body: `Send <b>$${amt.toFixed(2)}</b> to account <code>${acc}</code>${memo ? ` with memo "<em>${escapeHtml(memo)}</em>"` : ''}?`,
+        confirmLabel: 'Transfer',
+      });
+      if (!confirmed) return;
+
+      submit.disabled = true;
+      submit.textContent = 'Transferring…';
+      try {
+        const r = await OrionAPI.transfer({
+          recipient_account_number: acc,
+          amount: amt,
+          memo,
+          idempotency_key: 'orion-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        });
+        if (r && r.reference) {
+          msg.className = 'msg ok show';
+          msg.textContent = `Transfer of $${amt.toFixed(2)} succeeded (ref ${r.reference}).`;
+          form.reset();
+          loadBalance();
+          OrionUI.toast('Transfer complete', 'success', 2500);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Transfer failed.';
+        }
+      } catch (err) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error. Please try again.';
+      } finally {
+        submit.disabled = false;
+        submit.textContent = 'Transfer';
+      }
+    });
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    loadBalance();
+  })();
+</script>
+{% endblock %}

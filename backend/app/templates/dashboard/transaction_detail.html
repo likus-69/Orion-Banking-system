@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Transaction detail — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Transaction</div>
+      <h2 id="txTitle">Loading…</h2>
+      <div class="acc" id="txRef"></div>
+    </div>
+    <a href="/transactions" class="btn ghost icon">← All transactions</a>
+  </div>
+
+  <div class="balance-panel" id="txAmountPanel">
+    <div class="label">Amount</div>
+    <div class="amount" id="txAmount">—</div>
+    <div class="trend" id="txDirection"></div>
+  </div>
+
+  <div class="section-card">
+    <h3>Details</h3>
+    <div class="list-row"><div class="info"><span>Type</span></div><div><strong id="txType">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Status</span></div><div><span class="badge" id="txStatus">—</span></div></div>
+    <div class="list-row"><div class="info"><span>Category</span></div><div><code id="txCategory">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Created at</span></div><div><code id="txCreated">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Counterparty</span></div><div><strong id="txCounterparty">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Memo</span></div><div><em id="txMemo">—</em></div></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+    const txId = {{ tx_id }};
+
+    async function load() {
+      try {
+        const t = await OrionAPI.getTransaction(txId);
+        if (t && t.id) {
+          document.getElementById('txTitle').textContent = `${t.type} · ${t.reference}`;
+          document.getElementById('txRef').textContent = `Reference ${t.reference}`;
+          const isOut = t.direction === 'outgoing';
+          const sign = isOut ? '−' : '+';
+          document.getElementById('txAmount').innerHTML =
+            `<span class="currency">${sign}$</span>${Number(t.amount).toFixed(2)}`;
+          const dir = document.getElementById('txDirection');
+          dir.className = `trend ${isOut ? 'down' : 'up'}`;
+          dir.textContent = isOut ? 'Outgoing transfer' : 'Incoming transfer';
+
+          document.getElementById('txType').textContent = t.type;
+          const statusEl = document.getElementById('txStatus');
+          statusEl.textContent = t.status;
+          statusEl.className = `badge ${t.status === 'completed' ? 'success' : t.status === 'pending' ? 'warn' : 'danger'}`;
+          document.getElementById('txCategory').textContent = t.category;
+          document.getElementById('txCreated').textContent = OrionUI.fmtDate(t.created_at);
+          document.getElementById('txCounterparty').textContent =
+            t.counterparty_name ? `${t.counterparty_name} (${t.counterparty_account_number})` : '—';
+          document.getElementById('txMemo').textContent = t.memo || '—';
+        } else {
+          OrionUI.toast(t?.error?.message || 'Transaction not found.', 'error');
+          setTimeout(() => { window.location.href = '/transactions'; }, 1500);
+        }
+      } catch (err) {
+        OrionUI.toast('Could not load transaction.', 'error');
+      }
+    }
+
+    load();
+  })();
+</script>
+{% endblock %}

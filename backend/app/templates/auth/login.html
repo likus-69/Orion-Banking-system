@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button class="active" aria-current="page">Sign In</button>
+  <button onclick="window.location.href='/register'">Sign Up</button>
+{% endblock %}
+
+{% block content %}
+<header class="brand">
+  <div class="mark">Guided by Orion</div>
+  <h1>Welcome back to Orion.</h1>
+  <p>Your trusted online secure banking service</p>
+</header>
+
+<div class="card" style="max-width:420px;">
+  <h2>Sign in</h2>
+  <p class="sub">Enter your email and PIN to access your account.</p>
+
+  <form id="loginForm" autocomplete="off" novalidate>
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="username"
+           placeholder="you@example.com" required>
+
+    <label for="pin">PIN</label>
+    <input id="pin" name="pin" type="password" inputmode="numeric"
+           maxlength="6" placeholder="••••" required>
+
+    <button type="submit" class="btn" id="loginSubmit">Sign In</button>
+    <div class="msg" id="loginMsg" role="alert" aria-live="polite"></div>
+  </form>
+
+  <div class="hint">
+    No account yet? <a href="/register"><b>Create one in seconds →</b></a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    const form = document.getElementById('loginForm');
+    const msg = document.getElementById('loginMsg');
+    const submit = document.getElementById('loginSubmit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.className = 'msg';
+      const email = document.getElementById('email').value.trim();
+      const pin = document.getElementById('pin').value;
+      if (!email || !pin) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Email and PIN are required.';
+        return;
+      }
+      submit.disabled = true;
+      submit.textContent = 'Signing in…';
+      try {
+        const r = await OrionAPI.login({ email, pin });
+        if (r.ok) {
+          OrionUI.toast('Welcome back!', 'success', 2000);
+          setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r.data?.error?.message || 'Invalid email or PIN.';
+          submit.disabled = false;
+          submit.textContent = 'Sign In';
+        }
+      } catch (err) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error. Please try again.';
+        submit.disabled = false;
+        submit.textContent = 'Sign In';
+      }
+    });
+  })();
+</script>
+{% endblock %}

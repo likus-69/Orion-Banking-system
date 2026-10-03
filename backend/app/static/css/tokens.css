@@ -1,0 +1,108 @@
+/* ============================================================
+   Orion Banking — Design Tokens
+   Refactored from the original single-file HTML.
+   ============================================================ */
+
+:root {
+  /* ── Color: dark theme (default) ──────────────────────────── */
+  --navy-deep:      #0a1220;
+  --navy-panel:     #101b30;
+  --navy-line:      #223154;
+  --navy-input:     #0c1526;
+
+  --starlight:      #e8b85c;
+  --starlight-dim:  #a9853f;
+  --starlight-bright: #f2c877;
+
+  --ice:            #7fb8d9;
+  --paper:          #edeff4;
+  --paper-dim:      #9aa6bd;
+
+  --good:           #5fbe8a;
+  --bad:            #d9727f;
+  --warn:           #e8b85c;
+
+  /* Semantic tokens */
+  --bg:             var(--navy-deep);
+  --bg-panel:       var(--navy-panel);
+  --bg-input:       var(--navy-input);
+  --border:         var(--navy-line);
+  --text:           var(--paper);
+  --text-dim:       var(--paper-dim);
+  --accent:         var(--starlight);
+  --accent-hover:   var(--starlight-bright);
+  --success:        var(--good);
+  --danger:         var(--bad);
+  --info:           var(--ice);
+
+  /* ── Typography ───────────────────────────────────────────── */
+  --font-display:   'Display', 'Georgia', 'Times New Roman', serif;
+  --font-body:      'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:      'IBM Plex Mono', 'JetBrains Mono', Consolas, monospace;
+
+  --fs-xs:    0.75rem;
+  --fs-sm:    0.8125rem;
+  --fs-md:    0.9375rem;
+  --fs-lg:    1rem;
+  --fs-xl:    1.25rem;
+  --fs-2xl:   1.5rem;
+  --fs-3xl:   2rem;
+  --fs-4xl:   2.75rem;
+
+  --lh-tight:  1.2;
+  --lh-snug:   1.4;
+  --lh-relaxed: 1.6;
+
+  --tracking-wide:  0.08em;
+  --tracking-wider:  0.16em;
+
+  /* ── Spacing ──────────────────────────────────────────────── */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+
+  /* ── Radii ────────────────────────────────────────────────── */
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:   10px;
+  --radius-xl:   14px;
+  --radius-2xl:  18px;
+  --radius-full: 999px;
+
+  /* ── Shadow ──────────────────────────────────────────────── */
+  --shadow-card: 0 30px 80px -30px rgba(0, 0, 0, 0.7);
+  --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.2);
+
+  /* ── Motion ──────────────────────────────────────────────── */
+  --transition-fast: 0.15s ease;
+  --transition-med:   0.25s ease;
+
+  /* ── Layout ──────────────────────────────────────────────── */
+  --page-max-width: 720px;
+  --topnav-height: 68px;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:             #f7f8fb;
+  --bg-panel:       #ffffff;
+  --bg-input:       #f1f3f7;
+  --border:         #d8deea;
+  --text:           #0a1220;
+  --text-dim:       #5a6678;
+  --accent:         #a9853f;
+  --accent-hover:   #8c6f33;
+  --info:           #2d6b8c;
+  --success:        #2d8456;
+  --danger:         #b94a57;
+
+  --shadow-card: 0 30px 80px -30px rgba(10, 18, 32, 0.2);
+  --shadow-soft: 0 4px 14px rgba(10, 18, 32, 0.08);
+}

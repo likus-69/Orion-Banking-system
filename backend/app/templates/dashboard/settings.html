@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Settings — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button class="active" aria-current="page">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Manage your profile</div>
+      <h2>Settings</h2>
+    </div>
+  </div>
+
+  <!-- KYC -->
+  <div class="section-card">
+    <h3>KYC information</h3>
+    <p class="sub">Verify your identity to unlock higher transfer limits.</p>
+    <form id="kycForm" autocomplete="off" novalidate>
+      <div class="row2">
+        <div>
+          <label for="kycPhone">Phone</label>
+          <input id="kycPhone" type="tel" placeholder="+1 555 010 1234">
+        </div>
+        <div>
+          <label for="kycCountry">Country</label>
+          <input id="kycCountry" type="text" placeholder="e.g. Uganda">
+        </div>
+      </div>
+      <label for="kycAddress">Address line</label>
+      <input id="kycAddress" type="text" placeholder="Plot 12, Kampala Road">
+      <label for="kycCity">City</label>
+      <input id="kycCity" type="text" placeholder="Kampala">
+      <label for="kycDob">Date of birth</label>
+      <input id="kycDob" type="date">
+      <button type="submit" class="btn">Save KYC</button>
+      <div class="msg" id="kycMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <!-- Notifications -->
+  <div class="section-card">
+    <h3>Notifications</h3>
+    <p class="sub">Recent in-app alerts and unread items.</p>
+    <div id="notifList">
+      <div class="skeleton" style="height:32px;"></div>
+      <div class="skeleton" style="height:32px;margin-top:8px;"></div>
+    </div>
+    <button class="btn ghost icon" id="markAllRead" style="margin-top:16px;">Mark all as read</button>
+  </div>
+
+  <!-- Danger zone -->
+  <div class="section-card">
+    <h3>Danger zone</h3>
+    <p class="sub">Sign out from every device. All refresh tokens are revoked.</p>
+    <button class="btn danger" id="revokeSessionsBtn">Revoke all sessions</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth()) return;
+
+    async function loadProfile() {
+      try {
+        const me = await OrionAPI.me();
+        document.getElementById('kycPhone').value = me.phone || '';
+        document.getElementById('kycCountry').value = me.country || '';
+        document.getElementById('kycAddress').value = me.address_line || '';
+        document.getElementById('kycCity').value = me.city || '';
+        if (me.date_of_birth) {
+          const d = new Date(me.date_of_birth);
+          document.getElementById('kycDob').value = d.toISOString().slice(0, 10);
+        }
+      } catch {}
+    }
+
+    async function loadNotifications() {
+      try {
+        const list = await OrionAPI.listNotifications();
+        const div = document.getElementById('notifList');
+        div.innerHTML = '';
+        if (list.length === 0) {
+          div.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No notifications</h4><p>You're all caught up.</p></div>`;
+          return;
+        }
+        for (const n of list.slice(0, 8)) {
+          const item = document.createElement('div');
+          item.className = 'list-row';
+          item.innerHTML = `
+            <div class="info">
+              <strong>${escapeHtml(n.title)}${n.is_read ? '' : ' <span class="badge warn">new</span>'}</strong>
+              <span class="time">${escapeHtml(n.body || '')} · ${OrionUI.fmtDate(n.created_at)}</span>
+            </div>
+            <div class="actions">
+              ${n.is_read ? '' : `<button data-id="${n.id}" class="mark-read">Mark read</button>`}
+            </div>`;
+          div.appendChild(item);
+        }
+        div.querySelectorAll('.mark-read').forEach((b) => {
+          b.addEventListener('click', async () => {
+            await OrionAPI.markNotificationRead(parseInt(b.dataset.id, 10));
+            loadNotifications();
+          });
+        });
+      } catch {}
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    document.getElementById('kycForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('kycMsg');
+      msg.className = 'msg';
+      const payload = {
+        phone: document.getElementById('kycPhone').value.trim() || null,
+        country: document.getElementById('kycCountry').value.trim() || null,
+        address_line: document.getElementById('kycAddress').value.trim() || null,
+        city: document.getElementById('kycCity').value.trim() || null,
+        date_of_birth: document.getElementById('kycDob').value
+          ? new Date(document.getElementById('kycDob').value).toISOString()
+          : null,
+      };
+      try {
+        const r = await OrionAPI.updateKYC(payload);
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.textContent = 'KYC information saved. Status: in review.';
+          OrionUI.toast('KYC saved', 'success', 2000);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not save KYC.';
+        }
+      } catch {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error.';
+      }
+    });
+
+    document.getElementById('markAllRead').addEventListener('click', async () => {
+      await OrionAPI.markAllNotificationsRead();
+      loadNotifications();
+      OrionUI.toast('All marked as read', 'success', 1500);
+    });
+
+    document.getElementById('revokeSessionsBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Revoke all sessions?',
+        body: 'You will be signed out from every device, including this one.',
+        confirmLabel: 'Revoke & sign out',
+        danger: true,
+      });
+      if (!ok) return;
+      await OrionAPI.logout();
+      window.location.href = '/login';
+    });
+
+    loadProfile();
+    loadNotifications();
+  })();
+</script>
+{% endblock %}
