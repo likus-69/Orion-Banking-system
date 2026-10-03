@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: on-failure
+    environment:
+      POSTGRES_DB: orion_banking
+      POSTGRES_USER: orion
+      POSTGRES_PASSWORD: orion_dev_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orion -d orion_banking"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_NAME: Orion Banking API
+      DATABASE_URL: postgresql+psycopg://orion:orion_dev_password@postgres:5432/orion_banking
+    env_file:
+      - /run/base44/app.env
+    command:
+      - sh
+      - -ec
+      - |
+        pip install --no-cache-dir --quiet -r requirements.txt
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: on-failure
+
+  web:
+    image: python:3.12-slim
+    volumes:
+      - ./:/site:ro
+    command:
+      - sh
+      - -ec
+      - |
+        mkdir -p /www
+        ln -sf /site/OrionBS.1.0.html /www/index.html
+        exec python -m http.server 3000 --bind 0.0.0.0 --directory /www
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:3000/')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: on-failure
+
+volumes:
+  postgres_data:

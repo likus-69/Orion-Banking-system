@@ -2,10 +2,11 @@ fastapi==0.111.0
 uvicorn[standard]==0.30.1
 sqlalchemy==2.0.34
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 pydantic==2.8.2
 pydantic-settings==2.3.4
 python-jose[cryptography]==3.3.0
-psycopg[binary]==3.12.0
+psycopg[binary]==3.2.13
 python-dotenv==1.0.1
 alembic==1.13.2
 email-validator==2.2.0
