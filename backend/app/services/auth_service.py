@@ -23,6 +23,11 @@ from app.services.token_service import (
 
 log = get_logger(__name__)
 
+# Pre-computed valid bcrypt hash of a random string, used only for the
+# timing-attack mitigation on login attempts with unknown emails.
+# Generated once per process so the hash is constant for the lifetime of the app.
+_DUMMY_PIN_HASH = hash_pin("orion-timing-attack-dummy-pin-do-not-use")
+
 
 class AuthService:
     """Pure auth flows."""
@@ -87,7 +92,7 @@ class AuthService:
         user = self.users.get_by_email(email)
         if user is None:
             # Always run a hash verify to avoid timing attacks revealing which emails exist.
-            verify_pin(pin, "$2b$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+            verify_pin(pin, _DUMMY_PIN_HASH)
             raise AuthenticationError("Invalid email or PIN.")
         if user.is_locked:
             self.audit.log(

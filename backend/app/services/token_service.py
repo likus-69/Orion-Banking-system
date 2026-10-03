@@ -117,7 +117,16 @@ class TokenService:
             raise AuthenticationError("User not found.")
 
         stored = self.users.get_refresh_token(hash_token(refresh_token))
-        if stored is None or stored.revoked or stored.expires_at < datetime.now(timezone.utc):
+        if stored is None or stored.revoked:
+            raise AuthenticationError("Refresh token is invalid or expired.")
+
+        # SQLite returns naive datetimes; Postgres returns aware ones.
+        # Normalise both sides before comparison.
+        now = datetime.now(timezone.utc)
+        expires_at = stored.expires_at
+        if expires_at.tzinfo is None:
+            now = now.replace(tzinfo=None)
+        if expires_at < now:
             raise AuthenticationError("Refresh token is invalid or expired.")
 
         self.users.revoke_refresh_token(hash_token(refresh_token))
