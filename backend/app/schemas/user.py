@@ -1,54 +1,76 @@
-from datetime import datetime, timezone
+"""User-related Pydantic schemas."""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.config import settings
 
-class UserCreate(BaseModel):
+
+# ── Auth ──────────────────────────────────────────────────────────
+class RegisterRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     email: EmailStr
-    pin: str = Field(..., min_length=4, max_length=4)
+    pin: str = Field(..., min_length=settings.pin_min_length, max_length=settings.pin_max_length)
 
 
-class UserLogin(BaseModel):
+class LoginRequest(BaseModel):
     email: EmailStr
-    pin: str = Field(..., min_length=4, max_length=4)
+    pin: str = Field(..., min_length=settings.pin_min_length, max_length=settings.pin_max_length)
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+# ── Account operations ────────────────────────────────────────────
+class DepositRequest(BaseModel):
+    amount: float = Field(..., gt=0, le=1_000_000_000)
+    memo: str | None = Field(None, max_length=500)
 
 
-class UserResponse(BaseModel):
+class WithdrawRequest(DepositRequest):
+    pass
+
+
+class TransferRequest(BaseModel):
+    recipient_account_number: str = Field(..., min_length=14, max_length=14)
+    amount: float = Field(..., gt=0, le=1_000_000_000)
+    memo: str | None = Field(None, max_length=500)
+    idempotency_key: str | None = Field(None, min_length=8, max_length=64)
+
+
+# ── User responses ────────────────────────────────────────────────
+class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     account_number: str
     full_name: str
     email: str
-    balance: float
-
-
-class DepositRequest(BaseModel):
-    amount: float = Field(..., gt=0)
-    memo: str | None = None
-
-
-class TransferRequest(BaseModel):
-    recipient_account_number: str
-    amount: float = Field(..., gt=0)
-    memo: str | None = None
-
-
-class TransactionRecord(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    type: str
-    amount: float
-    memo: str | None = None
-    status: str
+    balance: float  # serialised from DECIMAL — see serializer below
+    phone: Optional[str] = None
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    kyc_status: str = "pending"
+    is_active: bool = True
     created_at: datetime
-    direction: str
-    counterparty_name: str | None = None
-    counterparty_account_number: str | None = None
+
+
+class KYCUpdateRequest(BaseModel):
+    phone: Optional[str] = Field(None, max_length=20)
+    address_line: Optional[str] = Field(None, max_length=255)
+    city: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+    date_of_birth: Optional[datetime] = None
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=2, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+
+
+class NotificationPreferences(BaseModel):
+    email_on_transfer_in: bool = True
+    email_on_transfer_out: bool = True
+    email_on_deposit: bool = True
+    email_on_withdrawal: bool = True

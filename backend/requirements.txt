@@ -1,13 +1,37 @@
+# ─── Web framework ────────────────────────────────────────────────
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+itsdangerous==2.2.0
+
+# ─── Database ────────────────────────────────────────────────────
 sqlalchemy==2.0.34
+alembic==1.13.2
+psycopg[binary]>=3.2,<3.4
+
+# ─── Auth / security ──────────────────────────────────────────────
 passlib[bcrypt]==1.7.4
+bcrypt<4.0
+python-jose[cryptography]==3.3.0
+pyjwt==2.9.0
+email-validator==2.2.0
+
+# ─── Settings / validation ───────────────────────────────────────
 pydantic==2.8.2
 pydantic-settings==2.3.4
-python-jose[cryptography]==3.3.0
-psycopg[binary]==3.12.0
 python-dotenv==1.0.1
-alembic==1.13.2
-email-validator==2.2.0
+
+# ─── Templating (UI served by backend) ────────────────────────────
+jinja2>=3.1.4
+
+# ─── Hardening + observability ───────────────────────────────────
+slowapi==0.1.10            # rate limiting
+structlog==24.4.0          # structured logging
+
+# ─── New features ─────────────────────────────────────────────────
+reportlab==4.2.4           # statement PDF export
+
+# ─── Testing ─────────────────────────────────────────────────────
 pytest==8.3.2
+pytest-asyncio==0.24.0
 httpx==0.27.0

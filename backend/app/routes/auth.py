@@ -1,50 +1,66 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+"""Auth API routes."""
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.models.user import Transaction, User
-from app.schemas.user import DepositRequest, Token, TransactionRecord, TransferRequest, UserCreate, UserLogin, UserResponse
-from app.services.auth_service import create_access_token, create_audit_log, get_current_user, hash_pin, verify_pin
+from app.deps import get_current_user, get_db, get_request_meta
+from app.models.user import User
+from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenPair
+from app.schemas.user import UserOut
+from app.services.auth_service import AuthService
 
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def generate_account_number(db: Session) -> str:
-    while True:
-        account_number = str(10000000000000 + (db.query(User).count() * 17) + 1)[:14]
-        if not db.query(User).filter(User.account_number == account_number).first():
-            return account_number
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse)
-def register_user(payload: UserCreate, db: Session = Depends(get_db)):
-    email = payload.email.lower().strip()
-    existing_user = db.query(User).filter(User.email == email).first()
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-
-    user = User(
-        account_number=generate_account_number(db),
-        full_name=payload.full_name.strip(),
-        email=email,
-        pin_hash=hash_pin(payload.pin),
-        balance=0.00,
+@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    meta = get_request_meta(request)
+    service = AuthService(db)
+    user = service.register(
+        full_name=payload.full_name,
+        email=payload.email,
+        pin=payload.pin,
+        **meta,
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    create_audit_log(db, user.id, "register", f"User registered account {user.account_number}")
-    db.commit()
     return user
 
 
-@router.post("/login", response_model=Token)
-def login_user(payload: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email.lower().strip()).first()
-    if not user or not verify_pin(payload.pin, user.pin_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or PIN")
+@router.post("/login", response_model=TokenPair)
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    meta = get_request_meta(request)
+    service = AuthService(db)
+    _, access, refresh, expires_in = service.login(
+        email=payload.email,
+        pin=payload.pin,
+        **meta,
+    )
+    return TokenPair(
+        access_token=access,
+        refresh_token=refresh,
+        token_type="bearer",
+        expires_in=expires_in,
+    )
 
-    create_audit_log(db, user.id, "login_success", f"User logged in successfully (email={user.email})")
-    db.commit()
-    token = create_access_token(subject=user.email)
-    return {"access_token": token, "token_type": "bearer"}
+
+@router.post("/refresh", response_model=TokenPair)
+def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+    service = AuthService(db)
+    access, new_refresh, expires_in = service.refresh(payload.refresh_token)
+    return TokenPair(
+        access_token=access,
+        refresh_token=new_refresh,
+        token_type="bearer",
+        expires_in=expires_in,
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = AuthService(db)
+    service.logout(current_user)
+    return None
