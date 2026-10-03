@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
+from app.models.user import AuditLog, User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -30,6 +30,17 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode: dict[str, Any] = {"sub": subject, "exp": expire}
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+
+
+def create_audit_log(db: Session, user_id: int | None, action: str, details: str | None = None, ip_address: str | None = None) -> None:
+    db.add(
+        AuditLog(
+            user_id=user_id,
+            action=action,
+            details=details,
+            ip_address=ip_address,
+        )
+    )
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:

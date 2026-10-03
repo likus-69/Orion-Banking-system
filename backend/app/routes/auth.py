@@ -3,15 +3,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import Transaction, User
-from app.schemas.user import Token, UserCreate, UserLogin, UserResponse
-from app.services.auth_service import create_access_token, hash_pin, verify_pin
+from app.schemas.user import DepositRequest, Token, TransactionRecord, TransferRequest, UserCreate, UserLogin, UserResponse
+from app.services.auth_service import create_access_token, create_audit_log, get_current_user, hash_pin, verify_pin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def generate_account_number(db: Session) -> str:
     while True:
-        account_number = str(10000000000000 + db.query(User).count() * 17 + 1)[0:14]
+        account_number = str(10000000000000 + (db.query(User).count() * 17) + 1)[:14]
         if not db.query(User).filter(User.account_number == account_number).first():
             return account_number
 
@@ -33,6 +33,8 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    create_audit_log(db, user.id, "register", f"User registered account {user.account_number}")
+    db.commit()
     return user
 
 
@@ -42,5 +44,7 @@ def login_user(payload: UserLogin, db: Session = Depends(get_db)):
     if not user or not verify_pin(payload.pin, user.pin_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or PIN")
 
+    create_audit_log(db, user.id, "login_success", f"User logged in successfully (email={user.email})")
+    db.commit()
     token = create_access_token(subject=user.email)
     return {"access_token": token, "token_type": "bearer"}

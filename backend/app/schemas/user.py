@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -36,3 +38,17 @@ class TransferRequest(BaseModel):
     recipient_account_number: str
     amount: float = Field(..., gt=0)
     memo: str | None = None
+
+
+class TransactionRecord(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: str
+    amount: float
+    memo: str | None = None
+    status: str
+    created_at: datetime
+    direction: str
+    counterparty_name: str | None = None
+    counterparty_account_number: str | None = None
