@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Webhook detail — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="active" aria-current="page">Webhooks</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 960px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Webhook</div>
+      <h2 id="whName">Loading…</h2>
+      <div class="acc" id="whUrl"></div>
+    </div>
+    <a href="/webhooks" class="btn ghost icon">← All webhooks</a>
+  </div>
+
+  <div class="section-card">
+    <h3>Configuration</h3>
+    <div class="list-row">
+      <div class="info"><span>Status</span></div>
+      <div><span class="badge" id="whStatus">—</span></div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>Signing secret</span></div>
+      <div><code id="whSecret">—</code></div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>Subscribed events</span></div>
+      <div id="whEvents">—</div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>Created</span></div>
+      <div><code id="whCreated">—</code></div>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;">
+      <button class="btn ghost icon" id="testPingBtn" style="width:auto;">Send test ping</button>
+      <button class="btn ghost icon" id="rotateSecretBtn" style="width:auto;">Rotate secret</button>
+      <button class="btn ghost icon" id="pauseBtn" style="width:auto;">Pause</button>
+      <button class="btn ghost icon" id="deleteBtn" style="width:auto; border-color: var(--danger); color: var(--danger);">Delete</button>
+    </div>
+    <div class="msg" id="actionMsg" role="alert" aria-live="polite"></div>
+  </div>
+
+  <div class="section-card">
+    <h3>Recent deliveries</h3>
+    <p class="sub">Last 50 delivery attempts. Click to view payload + response.</p>
+    <ul class="history" id="deliveryList">
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+    const webhookId = {{ webhook_id }};
+
+    async function load() {
+      try {
+        const me = await OrionAPI.me();
+        if (me.role !== 'admin' && me.role !== 'customer') return;  // sanity
+        const w = await fetch(`/api/webhooks/${webhookId}`).then((r) => r.json());
+        if (!w || !w.id) {
+          OrionUI.toast('Webhook not found.', 'error');
+          setTimeout(() => { window.location.href = '/webhooks'; }, 1500);
+          return;
+        }
+        render(w);
+        loadDeliveries();
+      } catch {
+        OrionUI.toast('Could not load webhook.', 'error');
+      }
+    }
+
+    function render(w) {
+      document.getElementById('whName').textContent = w.name;
+      document.getElementById('whUrl').textContent = w.url;
+      document.getElementById('whSecret').textContent = w.secret;
+      const eventsEl = document.getElementById('whEvents');
+      eventsEl.innerHTML = w.subscribed_events.trim() === ''
+        ? '<span class="badge">All events</span>'
+        : w.subscribed_events.split(',').filter(s=>s.trim()).map((e) => `<span class="badge">${escapeHtml(e.trim())}</span>`).join(' ');
+      const statusEl = document.getElementById('whStatus');
+      statusEl.textContent = w.status;
+      const statusCls = w.status === 'active' ? 'success' : w.status === 'paused' ? 'warn' : 'danger';
+      statusEl.className = `badge ${statusCls}`;
+      document.getElementById('whCreated').textContent = OrionUI.fmtDateShort(w.created_at);
+
+      // Update pause button label
+      const pauseBtn = document.getElementById('pauseBtn');
+      pauseBtn.textContent = w.status === 'active' ? 'Pause' : 'Resume';
+    }
+
+    async function loadDeliveries() {
+      try {
+        const list = await fetch(`/api/webhooks/${webhookId}/deliveries`).then((r) => r.json());
+        const ul = document.getElementById('deliveryList');
+        ul.innerHTML = '';
+        if (list.length === 0) {
+          ul.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No deliveries yet</h4><p>Make a deposit or trigger another event, or send a test ping above.</p></div>`;
+          return;
+        }
+        for (const d of list) {
+          const statusCls = d.status === 'delivered' ? 'success' : d.status === 'failed' ? 'danger' : 'warn';
+          const li = document.createElement('li');
+          li.style.cursor = 'pointer';
+          li.innerHTML = `
+            <span class="dot" style="background: ${d.status === 'delivered' ? 'var(--success)' : d.status === 'failed' ? 'var(--danger)' : 'var(--accent)'};"></span>
+            <div style="flex: 1;">
+              <strong>${escapeHtml(d.event_type)}</strong>
+              <div style="color: var(--text-dim); font-size: 12px;">
+                ${d.response_status_code ? `HTTP ${d.response_status_code} · ` : ''}attempts: ${d.attempt_count} · ${OrionUI.fmtDate(d.created_at)}
+              </div>
+              ${d.error_message ? `<div style="color: var(--danger); font-size: 11px;">${escapeHtml(d.error_message)}</div>` : ''}
+            </div>
+            <span class="badge ${statusCls}">${d.status}</span>`;
+          li.addEventListener('click', () => showPayload(d));
+          ul.appendChild(li);
+        }
+      } catch {
+        OrionUI.toast('Could not load deliveries.', 'error');
+      }
+    }
+
+    function showPayload(d) {
+      const formatted = (() => {
+        try { return JSON.stringify(JSON.parse(d.payload), null, 2); }
+        catch { return d.payload; }
+      })();
+      const body = `<pre style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 11px; max-height: 400px;">${escapeHtml(formatted)}</pre>`;
+      OrionUI.confirmModal({
+        title: `Delivery #${d.id} — ${d.event_type}`,
+        body: body + (d.response_body ? `<div style="margin-top:12px;"><strong>Response body:</strong><pre style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 11px; max-height: 200px;">${escapeHtml(d.response_body || '')}</pre></div>` : ''),
+        confirmLabel: 'Redeliver',
+        danger: false,
+      }).then((ok) => {
+        if (!ok) return;
+        fetch(`/api/webhooks/deliveries/${d.id}/redeliver`, { method: 'POST' })
+          .then(() => {
+            OrionUI.toast('Redelivery scheduled', 'success', 2000);
+            setTimeout(loadDeliveries, 1000);
+          });
+      });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    document.getElementById('testPingBtn').addEventListener('click', async () => {
+      const r = await fetch(`/api/webhooks/${webhookId}/test`, { method: 'POST' }).then((r) => r.json());
+      if (r && r.id) {
+        OrionUI.toast('Test ping sent', 'success', 2000);
+        setTimeout(loadDeliveries, 1500);
+      } else {
+        OrionUI.toast('Could not send test ping.', 'error');
+      }
+    });
+
+    document.getElementById('rotateSecretBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Rotate signing secret?',
+        body: 'Your receiver will need to be updated with the new secret. The old secret will stop working immediately.',
+        confirmLabel: 'Rotate',
+        danger: true,
+      });
+      if (!ok) return;
+      const r = await fetch(`/api/webhooks/${webhookId}/rotate-secret`, { method: 'POST' }).then((r) => r.json());
+      if (r && r.secret) {
+        const msg = document.getElementById('actionMsg');
+        msg.className = 'msg ok show';
+        msg.innerHTML = `New secret: <code>${escapeHtml(r.secret)}</code> — copy this now.`;
+        load();
+      }
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', async () => {
+      const current = document.getElementById('whStatus').textContent;
+      const next = current === 'active' ? 'paused' : 'active';
+      const r = await fetch(`/api/webhooks/${webhookId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      }).then((r) => r.json());
+      if (r && r.id) {
+        OrionUI.toast(`Webhook ${next}`, 'success', 1500);
+        load();
+      }
+    });
+
+    document.getElementById('deleteBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Delete webhook?',
+        body: 'This will stop all deliveries. Delivery history will also be deleted. This cannot be undone.',
+        confirmLabel: 'Delete',
+        danger: true,
+      });
+      if (!ok) return;
+      const r = await fetch(`/api/webhooks/${webhookId}`, { method: 'DELETE' });
+      if (r.status === 204) {
+        OrionUI.toast('Webhook deleted', 'success', 1500);
+        setTimeout(() => { window.location.href = '/webhooks'; }, 1000);
+      }
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@ from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, Toke
 from app.schemas.user import UserOut
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
+from app.services.webhook_service import WebhookService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

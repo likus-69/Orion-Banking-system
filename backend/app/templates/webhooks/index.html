@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Webhooks — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button class="active" aria-current="page">Webhooks</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 960px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Developer integrations</div>
+      <h2>Webhooks</h2>
+      <div class="acc">Receive event notifications at your own URL when money moves through your account.</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>How it works</h3>
+    <p class="sub">When an event you're subscribed to fires, Orion sends an HTTP POST to your URL with a JSON payload signed with HMAC-SHA256.</p>
+    <div class="list-row">
+      <div class="info"><span>1. Create a subscription</span></div>
+      <div>Provide a name + your receiver URL + select which events to listen for.</div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>2. Save the secret</span></div>
+      <div>You'll get a signing secret — store it securely, you'll use it to verify the signature on incoming requests.</div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>3. Verify signatures</span></div>
+      <div><code>X-Orion-Signature: sha256=...</code> — recompute HMAC-SHA256 of the raw request body with your secret and compare.</div>
+    </div>
+    <div class="list-row">
+      <div class="info"><span>4. Return 2xx</span></div>
+      <div>Any <code>2xx</code> response marks the delivery as successful. <code>4xx</code> disables retries; <code>5xx</code> triggers retry (up to 3 attempts).</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Create webhook</h3>
+    <p class="sub">You'll receive a signing secret on the next screen — copy it immediately.</p>
+    <form id="createForm">
+      <div class="row2">
+        <div>
+          <label for="whName">Name</label>
+          <input id="whName" type="text" maxlength="255" placeholder="e.g. Slack notifier" required>
+        </div>
+        <div>
+          <label for="whUrl">Target URL (HTTPS recommended)</label>
+          <input id="whUrl" type="url" placeholder="https://example.com/webhooks/orion" required>
+        </div>
+      </div>
+      <label>Events (leave empty to subscribe to all)</label>
+      <div id="eventToggles" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; margin-top: 8px;">
+        <!-- populated by JS -->
+      </div>
+      <button type="submit" class="btn">Create webhook</button>
+      <div class="msg" id="createMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div class="section-card">
+    <h3>Your webhooks</h3>
+    <p class="sub">Active subscriptions. Click a webhook to view delivery history + send a test ping.</p>
+    <div id="webhookList">
+      <div class="skeleton" style="height: 64px;"></div>
+      <div class="skeleton" style="height: 64px; margin-top: 8px;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    const ALL_EVENTS = [
+      { value: 'transaction.deposit',       label: 'Deposit',          desc: 'Money credited to your account' },
+      { value: 'transaction.withdrawal',    label: 'Withdrawal',       desc: 'Money debited from your account' },
+      { value: 'transaction.transfer.in',   label: 'Transfer received',desc: 'Money received from another user' },
+      { value: 'transaction.transfer.out',  label: 'Transfer sent',   desc: 'Money sent to another user' },
+      { value: 'kyc.approved',              label: 'KYC approved',     desc: 'Admin approved your KYC submission' },
+      { value: 'kyc.rejected',             label: 'KYC rejected',     desc: 'Admin rejected your KYC submission' },
+    ];
+
+    // Build event toggle checkboxes
+    const togglesDiv = document.getElementById('eventToggles');
+    for (const ev of ALL_EVENTS) {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input);font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);margin:0;cursor:pointer;';
+      label.innerHTML = `<input type="checkbox" value="${ev.value}" style="width:auto;"> <div><strong>${ev.label}</strong><div style="font-size:11px;color:var(--text-dim);">${ev.desc}</div></div>`;
+      togglesDiv.appendChild(label);
+    }
+
+    async function loadWebhooks() {
+      try {
+        const list = await fetch('/api/webhooks').then((r) => r.json());
+        render(list);
+      } catch {
+        OrionUI.toast('Could not load webhooks.', 'error');
+      }
+    }
+
+    function render(items) {
+      const div = document.getElementById('webhookList');
+      div.innerHTML = '';
+      if (items.length === 0) {
+        div.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No webhooks yet</h4><p>Create your first webhook above.</p></div>`;
+        return;
+      }
+      for (const w of items) {
+        const item = document.createElement('div');
+        const statusBadge = w.status === 'active' ? 'success' : w.status === 'paused' ? 'warn' : 'danger';
+        const eventCount = w.subscribed_events.trim() === '' ? 'All events' : `${w.subscribed_events.split(',').filter(s=>s.trim()).length} events`;
+        item.innerHTML = `
+          <div class="linked-card" style="margin-bottom: 10px;">
+            <div class="who">
+              <div class="mini-avatar">${escapeHtml(w.name.charAt(0).toUpperCase())}</div>
+              <div>
+                <div class="name">${escapeHtml(w.name)}</div>
+                <div class="acc">${escapeHtml(w.url)}</div>
+                <div class="acc">${eventCount} · <span class="badge ${statusBadge}">${w.status}</span></div>
+              </div>
+            </div>
+            <button class="switch-btn view-btn">View →</button>
+          </div>`;
+        item.querySelector('.view-btn').addEventListener('click', () => {
+          window.location.href = `/webhooks/${w.id}`;
+        });
+        div.appendChild(item);
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('createMsg');
+      msg.className = 'msg';
+      const name = document.getElementById('whName').value.trim();
+      const url = document.getElementById('whUrl').value.trim();
+      const events = Array.from(document.querySelectorAll('#eventToggles input:checked'))
+        .map((cb) => cb.value).join(',');
+      if (!name || !url) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Name and URL are required.';
+        return;
+      }
+      try {
+        const r = await fetch('/api/webhooks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, url, subscribed_events: events }),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.innerHTML = `Created! Signing secret: <code>${escapeHtml(r.secret)}</code> — copy this now, you'll need it to verify signatures.`;
+          document.getElementById('createForm').reset();
+          loadWebhooks();
+          OrionUI.toast('Webhook created', 'success', 2500);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not create webhook.';
+        }
+      } catch {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error.';
+      }
+    });
+
+    loadWebhooks();
+  })();
+</script>
+{% endblock %}

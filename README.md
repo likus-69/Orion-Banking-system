@@ -30,7 +30,7 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
 
 ### Testing
-- 60 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, and email triggers
+- 76 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, and webhooks
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -189,6 +189,84 @@ For testing, set `EMAIL_BACKEND=memory` — sent emails are captured in-process 
 
 ---
 
+## 🔔 Webhooks
+
+Users can register webhook URLs to receive event notifications when money moves through their account (or when their KYC status changes). Each delivery is HMAC-SHA256-signed and persisted for audit.
+
+### Supported events
+
+| Event type | Fires when |
+|------------|------------|
+| `transaction.deposit` | User makes a deposit |
+| `transaction.withdrawal` | User makes a withdrawal |
+| `transaction.transfer.out` | User sends money to another account |
+| `transaction.transfer.in` | User receives money from another account |
+| `kyc.approved` | Admin approves the user's KYC |
+| `kyc.rejected` | Admin rejects the user's KYC |
+
+### Payload shape
+
+```json
+{
+  "id": "evt_abc123...",
+  "type": "transaction.deposit",
+  "created_at": "2024-10-07T12:34:56.789Z",
+  "data": {
+    "transaction_id": 42,
+    "reference": "ORX-AB12-CD34",
+    "amount": 250.00,
+    "memo": "paycheck",
+    "new_balance": 1250.00,
+    "created_at": "2024-10-07T12:34:56.789Z"
+  }
+}
+```
+
+### Verifying signatures
+
+Every delivery includes an `X-Orion-Signature` header of the form `sha256=<hex>`. To verify, recompute HMAC-SHA256 of the **raw request body** using the webhook's signing secret (returned on creation or after rotation):
+
+```python
+import hmac, hashlib
+
+expected = "sha256=" + hmac.new(
+    secret.encode(),
+    request_body.encode(),
+    hashlib.sha256
+).hexdigest()
+
+if not hmac.compare_digest(expected, request.headers["X-Orion-Signature"]):
+    return 401  # signature mismatch — reject
+```
+
+### Retry behavior
+
+- **2xx response** → delivery marked as `delivered`, no retry
+- **4xx response** → delivery marked as `failed`, **no retry** (receiver rejected it; retrying won't help)
+- **5xx response or network error** → retry up to 3 attempts with backoff, then marked as `failed`
+
+### API endpoints
+
+All under `/api/webhooks`, all require authentication:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/api/webhooks` | List your webhooks |
+| `POST` | `/api/webhooks` | Create a webhook (returns signing secret) |
+| `GET`  | `/api/webhooks/{id}` | Get a webhook |
+| `PATCH`| `/api/webhooks/{id}` | Update name, URL, events, or status |
+| `DELETE` | `/api/webhooks/{id}` | Delete a webhook |
+| `POST` | `/api/webhooks/{id}/rotate-secret` | Rotate signing secret |
+| `POST` | `/api/webhooks/{id}/test` | Send a `ping` event for testing |
+| `GET`  | `/api/webhooks/{id}/deliveries` | List recent deliveries |
+| `POST` | `/api/webhooks/deliveries/{id}/redeliver` | Re-send a delivery |
+
+### UI
+
+Visit `/webhooks` to manage your subscriptions through a self-serve UI. Each webhook has a detail page showing delivery history with status codes, response bodies, and a "Redeliver" button.
+
+---
+
 ## 🧪 Testing
 
 ```bash
@@ -221,9 +299,9 @@ uvicorn app.main:app
 ## 🗺️ Roadmap / Not yet implemented
 
 - ~~Email notifications (SMTP integration)~~ ✅ Done
+- ~~Webhooks for transaction events~~ ✅ Done
 - Scheduled / recurring transfers (background task queue)
 - Two-factor authentication (TOTP)
-- Webhooks for transaction events
 
 ---
 
