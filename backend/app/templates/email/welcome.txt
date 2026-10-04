@@ -1,0 +1,12 @@
+Welcome to {{ app_name }}, {{ user.full_name }}.
+
+Your account has been created successfully.
+
+Account number: {{ user.account_number }}
+Email: {{ user.email }}
+
+You can now sign in at any time and start using Orion Banking.
+
+If you did not create this account, please reply to this email immediately.
+
+— The {{ app_name }} team

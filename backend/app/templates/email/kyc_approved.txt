@@ -1,0 +1,9 @@
+KYC verified
+
+Hi {{ user.full_name }},
+
+Good news — your identity has been verified by {{ reviewed_by }}.
+
+You're now fully set up with {{ app_name }}.
+
+— {{ app_name }}

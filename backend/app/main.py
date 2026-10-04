@@ -24,7 +24,7 @@ from app.database import Base, engine
 from app.exceptions import OrionError
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestIdMiddleware
-from app.routes import accounts, auth, notifications, pages, statements, transactions
+from app.routes import accounts, admin, auth, notifications, pages, statements, transactions
 
 
 # ────────────────────────── Lifespan ──────────────────────────────
@@ -122,6 +122,7 @@ app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(statements.router)
 app.include_router(notifications.router)
+app.include_router(admin.router)
 app.include_router(pages.router)  # Jinja2 HTML routes — last so /api takes precedence
 
 

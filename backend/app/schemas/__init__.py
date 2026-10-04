@@ -1,6 +1,13 @@
-"""Pydantic schemas for request/response validation."""
+"""Schemas index — re-exports for convenience."""
 from __future__ import annotations
 
+from app.schemas.admin import (
+    AdminStatsOut,
+    AdminUserListOut,
+    AdminUserOut,
+    KycApproveRequest,
+    KycRejectRequest,
+)
 from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
@@ -18,16 +25,23 @@ from app.schemas.transaction import (
 from app.schemas.user import (
     KYCUpdateRequest,
     NotificationPreferences,
+    NotificationPreferencesUpdate,
     UserOut,
     UserUpdateRequest,
 )
 
 __all__ = [
+    "AdminStatsOut",
+    "AdminUserListOut",
+    "AdminUserOut",
     "DepositRequest",
     "KYCUpdateRequest",
+    "KycApproveRequest",
+    "KycRejectRequest",
     "LoginRequest",
     "NotificationOut",
     "NotificationPreferences",
+    "NotificationPreferencesUpdate",
     "RefreshRequest",
     "RegisterRequest",
     "StatementRequest",

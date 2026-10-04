@@ -4,10 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from app.models.user import RefreshToken, User
+from app.models.user import RefreshToken, User, UserRole
 from app.repositories.base import BaseRepository
 
 
@@ -86,3 +86,52 @@ class UserRepository(BaseRepository[User]):
         user.failed_login_attempts = 0
         user.is_locked = False
         self._db.flush()
+
+    # ── Admin lookups ─────────────────────────────────────────────
+    def list_users(
+        self,
+        *,
+        skip: int = 0,
+        limit: int = 50,
+        role: Optional[UserRole] = None,
+        search: Optional[str] = None,
+    ) -> list[User]:
+        """Paginated user listing with optional role filter + free-text search."""
+        q = self._db.query(User)
+        if role is not None:
+            q = q.filter(User.role == role)
+        if search:
+            like = f"%{search.strip().lower()}%"
+            q = q.filter(
+                or_(
+                    User.email.ilike(like),
+                    User.full_name.ilike(like),
+                    User.account_number.ilike(like),
+                )
+            )
+        return q.order_by(User.created_at.desc()).offset(skip).limit(limit).all()
+
+    def count_users(
+        self,
+        *,
+        role: Optional[UserRole] = None,
+        search: Optional[str] = None,
+    ) -> int:
+        q = self._db.query(User)
+        if role is not None:
+            q = q.filter(User.role == role)
+        if search:
+            like = f"%{search.strip().lower()}%"
+            q = q.filter(
+                or_(
+                    User.email.ilike(like),
+                    User.full_name.ilike(like),
+                    User.account_number.ilike(like),
+                )
+            )
+        return q.count()
+
+    def get_admin_by_email(self, email: str) -> Optional[User]:
+        """Look up a user that has admin role by email — used for admin login."""
+        u = self.get_by_email(email)
+        return u if (u and u.role == UserRole.admin) else None

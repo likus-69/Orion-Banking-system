@@ -45,6 +45,21 @@ class Settings(BaseSettings):
     auth_rate_limit_per_minute: int = 10
     api_rate_limit_per_minute: int = 60
 
+    # ── Email / SMTP ──────────────────────────────────────────────
+    # Backend: "console" (prints to stdout, dev only), "memory" (in-process
+    # capture, used by tests), "smtp" (real SMTP via aiosmtplib).
+    email_backend: Literal["console", "memory", "smtp"] = "console"
+    email_from_address: str = "no-reply@orionbank.com"
+    email_from_name: str = "Orion Banking"
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    # If true, a failed email send logs the error but does NOT raise —
+    # we never want email delivery issues to break a financial transaction.
+    email_silent_failure: bool = True
+
     @field_validator("secret_key")
     @classmethod
     def _warn_insecure_secret(cls, v: str) -> str:

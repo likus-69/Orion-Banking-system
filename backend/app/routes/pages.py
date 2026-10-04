@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.deps import get_current_user
+from app.deps import get_admin_user, get_current_user
 
 router = APIRouter(tags=["pages"])
 
@@ -86,4 +86,34 @@ def settings_page(request: Request):
 def profile_page(request: Request):
     return request.app.state.templates.TemplateResponse(
         "dashboard/profile.html", _ctx(request, page="profile")
+    )
+
+
+# ── Admin pages ───────────────────────────────────────────────────
+@router.get("/admin", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_dashboard_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "admin/index.html", _ctx(request, page="admin_dashboard")
+    )
+
+
+@router.get("/admin/kyc", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_kyc_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "admin/kyc.html", _ctx(request, page="admin_kyc")
+    )
+
+
+@router.get("/admin/kyc/{user_id}", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_kyc_detail_page(request: Request, user_id: int):
+    return request.app.state.templates.TemplateResponse(
+        "admin/kyc_detail.html",
+        _ctx(request, page="admin_kyc_detail", target_user_id=user_id),
+    )
+
+
+@router.get("/admin/users", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_users_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "admin/users.html", _ctx(request, page="admin_users")
     )

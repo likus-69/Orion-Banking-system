@@ -12,9 +12,10 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Layered architecture**: routes → services → repositories → models
 - **Auth**: bcrypt-hashed PINs, JWT access + refresh token pair, single-use refresh rotation, weak-PIN rejection, login lockout after 5 failures, timing-attack safe login
 - **Concurrency-safe money movement**: `SELECT FOR UPDATE` row locks on transfers/withdrawals/deposits, deterministic lock ordering to avoid deadlocks, idempotency keys for transfers
-- **New features**: KYC fields, transaction categories/types/statuses, in-app notifications, statement PDF export, request-ID middleware, IP/User-Agent audit logging
+- **New features**: KYC fields, transaction categories/types/statuses, in-app notifications, statement PDF export, request-ID middleware, IP/User-Agent audit logging, **transactional email notifications**
 - **Hardening**: CORS allowlist, rate limiting (slowapi), structured logging (structlog), GZip middleware, consistent JSON error shape with request IDs
 - **Config**: strict validation (forbids `change-me-in-production` secret, rejects SQLite in prod env), env-driven
+- **Email**: SMTP backend with switchable dev (console) + test (memory) backends, fire-and-forget via FastAPI BackgroundTasks, per-event opt-out preferences
 
 ### Frontend (Jinja2 + vanilla JS)
 - **Refined design tokens**: dark + light theme via `data-theme` attribute, IBM Plex + Playfair Display typography
@@ -26,9 +27,10 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Profile page** with avatar, account details
 - **Statement PDF export** (reportlab-generated on the backend)
 - **Toast notifications**, loading skeletons, empty states, optimistic UI updates, accessibility (ARIA, keyboard nav)
+- **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
 
 ### Testing
-- 29 pytest tests covering auth, accounts, transactions, statements, notifications
+- 60 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, and email triggers
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -67,13 +69,14 @@ For local dev, SQLite works out of the box — no Postgres needed.
 python scripts/seed.py
 ```
 
-Creates three demo users with sample transactions:
+Creates four demo accounts (3 customers + 1 admin) with sample transactions:
 
-| Email                          | PIN   | Balance    |
-| ------------------------------ | ----- | ---------- |
-| mary.garcia@orionbank.com      | 8421  | $12,500.00 |
-| alex.rivera@orionbank.com      | 7351  | $3,200.50  |
-| demo@orionbank.com             | 4242  | $0.00      |
+| Email                          | PIN   | Role     | KYC status  | Balance    |
+| ------------------------------ | ----- | -------- | ----------- | ---------- |
+| mary.garcia@orionbank.com      | 8421  | customer | verified    | $12,500.00 |
+| alex.rivera@orionbank.com      | 7351  | customer | in_review   | $3,200.50  |
+| demo@orionbank.com             | 4242  | customer | pending     | $0.00      |
+| admin@orionbank.com            | 1357  | admin    | verified    | $0.00      |
 
 ### 5. Run the server
 
@@ -82,7 +85,8 @@ uvicorn app.main:app --reload
 ```
 
 Visit:
-- **UI**: http://localhost:8000/login
+- **Customer UI**: http://localhost:8000/login
+- **Admin UI**: http://localhost:8000/admin (login as `admin@orionbank.com` / `1357`)
 - **API docs** (Swagger): http://localhost:8000/api/docs
 - **Health check**: http://localhost:8000/health
 
@@ -149,6 +153,39 @@ backend/
 - **Audit logs**: every auth + transaction action is logged with IP, User-Agent, request ID.
 - **CORS**: configurable allowlist (default: localhost only).
 - **Rate limiting**: 10/min on auth endpoints, 60/min elsewhere (configurable).
+- **Email failures are non-fatal**: if SMTP throws during a transaction, the request still succeeds (`EMAIL_SILENT_FAILURE=true` by default). Audit logs capture the failure.
+
+---
+
+## 📧 Email Configuration
+
+Emails are sent on key events: registration (welcome), deposit/withdrawal confirmations, transfer in/out notifications, and KYC approve/reject decisions.
+
+Configure via `.env`:
+
+```bash
+# Dev: print emails to stdout (default)
+EMAIL_BACKEND=console
+
+# Production: real SMTP
+EMAIL_BACKEND=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USE_TLS=true
+SMTP_USERNAME=your-account@gmail.com
+SMTP_PASSWORD=your-app-password   # use an App Password, not your account password
+EMAIL_FROM_ADDRESS=no-reply@yourdomain.com
+EMAIL_FROM_NAME=Orion Banking
+```
+
+Users can opt out of individual event types from **Settings → Email preferences**. The five toggles are:
+- Deposit confirmations
+- Withdrawal confirmations
+- Incoming transfers
+- Outgoing transfers
+- KYC decisions
+
+For testing, set `EMAIL_BACKEND=memory` — sent emails are captured in-process and can be inspected via `app.services.email_service.get_sent_emails()`.
 
 ---
 
@@ -183,11 +220,10 @@ uvicorn app.main:app
 
 ## 🗺️ Roadmap / Not yet implemented
 
-- Email notifications (SMTP integration)
+- ~~Email notifications (SMTP integration)~~ ✅ Done
 - Scheduled / recurring transfers (background task queue)
 - Two-factor authentication (TOTP)
 - Webhooks for transaction events
-- Admin panel for KYC review
 
 ---
 

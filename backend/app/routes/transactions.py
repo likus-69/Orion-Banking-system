@@ -1,13 +1,14 @@
 """Transactions API routes — deposit / withdraw / transfer / history / detail."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, get_request_meta
 from app.models.transaction import TransactionCategory, TransactionStatus, TransactionType
 from app.models.user import User
 from app.schemas.transaction import DepositRequest, TransactionOut, TransferRequest, WithdrawRequest
+from app.services.email_service import EmailService
 from app.services.transaction_service import TransactionService
 
 
@@ -41,12 +42,20 @@ router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 def deposit(
     payload: DepositRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     meta = get_request_meta(request)
     service = TransactionService(db)
     tx = service.deposit(current_user, payload.amount, memo=payload.memo, **meta)
+    EmailService(db, background_tasks=background_tasks).send_deposit_confirmation(
+        current_user,
+        amount=f"${float(tx.amount):,.2f}",
+        reference=tx.reference,
+        memo=tx.memo,
+        new_balance=f"${float(current_user.balance):,.2f}",
+    )
     return _serialize(tx, current_user.id)
 
 
@@ -54,12 +63,20 @@ def deposit(
 def withdraw(
     payload: WithdrawRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     meta = get_request_meta(request)
     service = TransactionService(db)
     tx = service.withdraw(current_user, payload.amount, memo=payload.memo, **meta)
+    EmailService(db, background_tasks=background_tasks).send_withdrawal_confirmation(
+        current_user,
+        amount=f"${float(tx.amount):,.2f}",
+        reference=tx.reference,
+        memo=tx.memo,
+        new_balance=f"${float(current_user.balance):,.2f}",
+    )
     return _serialize(tx, current_user.id)
 
 
@@ -67,6 +84,7 @@ def withdraw(
 def transfer(
     payload: TransferRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -79,6 +97,27 @@ def transfer(
         memo=payload.memo,
         idempotency_key=payload.idempotency_key,
         **meta,
+    )
+    # Sender confirmation email
+    recipient = tx.receiver
+    EmailService(db, background_tasks=background_tasks).send_transfer_outgoing(
+        current_user,
+        amount=f"${float(tx.amount):,.2f}",
+        reference=tx.reference,
+        recipient_name=recipient.full_name,
+        recipient_account=recipient.account_number,
+        memo=tx.memo,
+        new_balance=f"${float(current_user.balance):,.2f}",
+    )
+    # Recipient notification email
+    EmailService(db, background_tasks=background_tasks).send_transfer_incoming(
+        recipient,
+        amount=f"${float(tx.amount):,.2f}",
+        reference=tx.reference,
+        sender_name=current_user.full_name,
+        sender_account=current_user.account_number,
+        memo=tx.memo,
+        new_balance=f"${float(recipient.balance):,.2f}",
     )
     return _serialize(tx, current_user.id)
 

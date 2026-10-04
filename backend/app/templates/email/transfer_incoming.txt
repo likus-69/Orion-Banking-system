@@ -1,0 +1,12 @@
+You received {{ amount }}
+
+Hi {{ user.full_name }},
+
+You've received a transfer of {{ amount }} from {{ sender_name }} (account {{ sender_account }}).
+
+Reference: {{ reference }}
+{% if memo %}Memo: {{ memo }}
+{% endif %}
+New balance: {{ new_balance }}
+
+— {{ app_name }}

@@ -7,7 +7,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.logging_config import get_logger
-from app.models.user import User
+from app.models.user import KycStatus, User
 from app.repositories.user_repo import UserRepository
 from app.services.audit_service import AuditService
 
@@ -57,13 +57,53 @@ class AccountService:
             user.country = country
         if date_of_birth is not None:
             user.date_of_birth = date_of_birth
-        # If any KYC field was provided, mark KYC as in-review.
+        # If any KYC field was provided, mark KYC as in-review (resets prior rejection).
         if any(v is not None for v in (phone, address_line, city, country, date_of_birth)):
-            user.kyc_status = "in_review"
+            user.kyc_status = KycStatus.in_review
+            user.kyc_rejection_reason = None
+            user.kyc_reviewed_by = None
+            user.kyc_reviewed_at = None
             self.audit.log(
                 user_id=user.id,
                 action="kyc_updated",
-                details="User submitted KYC information",
+                details="User submitted KYC information for review",
+            )
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def update_notification_preferences(
+        self,
+        user: User,
+        *,
+        email_on_deposit: Optional[bool] = None,
+        email_on_withdrawal: Optional[bool] = None,
+        email_on_transfer_in: Optional[bool] = None,
+        email_on_transfer_out: Optional[bool] = None,
+        email_on_kyc_decision: Optional[bool] = None,
+    ) -> User:
+        """Update one or more email notification preferences."""
+        changed = []
+        if email_on_deposit is not None:
+            user.email_on_deposit = email_on_deposit
+            changed.append("deposit")
+        if email_on_withdrawal is not None:
+            user.email_on_withdrawal = email_on_withdrawal
+            changed.append("withdrawal")
+        if email_on_transfer_in is not None:
+            user.email_on_transfer_in = email_on_transfer_in
+            changed.append("transfer_in")
+        if email_on_transfer_out is not None:
+            user.email_on_transfer_out = email_on_transfer_out
+            changed.append("transfer_out")
+        if email_on_kyc_decision is not None:
+            user.email_on_kyc_decision = email_on_kyc_decision
+            changed.append("kyc_decision")
+        if changed:
+            self.audit.log(
+                user_id=user.id,
+                action="notification_prefs_updated",
+                details=f"Updated email prefs: {', '.join(changed)}",
             )
         self.db.commit()
         self.db.refresh(user)

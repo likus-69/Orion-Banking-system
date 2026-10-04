@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Review KYC — Admin{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/admin'">Dashboard</button>
+  <button onclick="window.location.href='/admin/kyc'">KYC Queue</button>
+  <button onclick="window.location.href='/admin/users'">Users</button>
+  <button onclick="window.location.href='/dashboard'" style="margin-left:24px;">← Customer view</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 880px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">KYC review</div>
+      <h2 id="userName">Loading…</h2>
+      <div class="acc" id="userMeta"></div>
+    </div>
+    <a href="/admin/kyc" class="btn ghost icon">← Back to queue</a>
+  </div>
+
+  <div class="balance-panel">
+    <div class="label">Current KYC status</div>
+    <div class="amount"><span class="badge" id="kycBadge" style="font-size: 16px; padding: 8px 16px;">—</span></div>
+    <div class="trend" id="kycReviewedBy">—</div>
+  </div>
+
+  <div class="section-card">
+    <h3>Submitted information</h3>
+    <p class="sub">Verify the user's identity documents match what they entered.</p>
+
+    <div class="list-row"><div class="info"><span>Full name</span></div><div><strong id="fullName">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Email</span></div><div><code id="email">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Account number</span></div><div><code id="accountNumber">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Phone</span></div><div><strong id="phone">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Address</span></div><div><strong id="address">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>City / Country</span></div><div><strong id="cityCountry">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Date of birth</span></div><div><code id="dob">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Member since</span></div><div><code id="memberSince">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Current balance</span></div><div><strong id="balance">—</strong></div></div>
+  </div>
+
+  <div class="section-card" id="rejectCard" style="display: none;">
+    <h3>Rejection reason</h3>
+    <p class="sub">Required if rejecting. Be specific so the user knows what to fix.</p>
+    <textarea id="rejectReason" maxlength="500" placeholder="e.g. Date of birth does not match — please re-enter and resubmit."></textarea>
+  </div>
+
+  <div class="section-card">
+    <h3>Decision</h3>
+    <p class="sub">Approving marks the user as verified. Rejecting notifies them with your reason.</p>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <button class="btn ghost icon" id="toggleRejectBtn" style="width: auto; border-color: var(--danger); color: var(--danger);">Reject</button>
+      <button class="btn icon" id="approveBtn" style="width: auto;">Approve KYC</button>
+    </div>
+    <div class="msg" id="decisionMsg" role="alert" aria-live="polite"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+    const targetUserId = {{ target_user_id }};
+
+    async function load() {
+      try {
+        const me = await OrionAPI.me();
+        if (me.role !== 'admin') {
+          OrionUI.toast('Admins only.', 'error', 3000);
+          setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
+          return;
+        }
+        const u = await fetch(`/api/admin/users/${targetUserId}`).then((r) => r.json());
+        render(u);
+      } catch (err) {
+        OrionUI.toast('Could not load user.', 'error');
+      }
+    }
+
+    function render(u) {
+      document.getElementById('userName').textContent = u.full_name;
+      document.getElementById('userMeta').textContent = `User ID ${u.id} · Account ${u.account_number}`;
+      document.getElementById('fullName').textContent = u.full_name;
+      document.getElementById('email').textContent = u.email;
+      document.getElementById('accountNumber').textContent = u.account_number;
+      document.getElementById('phone').textContent = u.phone || '—';
+      document.getElementById('address').textContent = u.address_line || '—';
+      document.getElementById('cityCountry').textContent = [u.city, u.country].filter(Boolean).join(', ') || '—';
+      document.getElementById('dob').textContent = u.date_of_birth ? OrionUI.fmtDateShort(u.date_of_birth) : '—';
+      document.getElementById('memberSince').textContent = OrionUI.fmtDateShort(u.created_at);
+      document.getElementById('balance').textContent = OrionUI.fmtMoney(u.balance);
+
+      const badge = document.getElementById('kycBadge');
+      badge.textContent = `KYC: ${u.kyc_status.replace('_', ' ')}`;
+      const cls = u.kyc_status === 'verified' ? 'success' : u.kyc_status === 'rejected' ? 'danger' : u.kyc_status === 'in_review' ? 'warn' : '';
+      badge.className = `badge ${cls}`;
+
+      const reviewed = document.getElementById('kycReviewedBy');
+      if (u.kyc_reviewed_at) {
+        reviewed.textContent = `Last reviewed ${OrionUI.fmtDate(u.kyc_reviewed_at)}${u.kyc_rejection_reason ? ' · Reason: ' + u.kyc_rejection_reason : ''}`;
+      } else {
+        reviewed.textContent = 'Not yet reviewed.';
+      }
+    }
+
+    const toggleReject = document.getElementById('toggleRejectBtn');
+    const rejectCard = document.getElementById('rejectCard');
+    const approveBtn = document.getElementById('approveBtn');
+    const msg = document.getElementById('decisionMsg');
+
+    let rejectMode = false;
+    toggleReject.addEventListener('click', () => {
+      rejectMode = !rejectMode;
+      rejectCard.style.display = rejectMode ? 'block' : 'none';
+      toggleReject.textContent = rejectMode ? 'Cancel rejection' : 'Reject';
+      approveBtn.textContent = rejectMode ? 'Confirm rejection' : 'Approve KYC';
+      approveBtn.classList.toggle('danger', rejectMode);
+    });
+
+    approveBtn.addEventListener('click', async () => {
+      msg.className = 'msg';
+      if (rejectMode) {
+        const reason = document.getElementById('rejectReason').value.trim();
+        if (reason.length < 4) {
+          msg.className = 'msg err show';
+          msg.textContent = 'Rejection reason must be at least 4 characters.';
+          return;
+        }
+        const ok = await OrionUI.confirmModal({
+          title: 'Reject this KYC?',
+          body: `The user will be notified with your reason: <em>${escapeHtml(reason)}</em>`,
+          confirmLabel: 'Confirm rejection',
+          danger: true,
+        });
+        if (!ok) return;
+        const r = await fetch(`/api/admin/kyc/${targetUserId}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.textContent = 'KYC rejected. User notified.';
+          OrionUI.toast('KYC rejected', 'success', 2000);
+          setTimeout(load, 800);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not reject.';
+        }
+      } else {
+        const ok = await OrionUI.confirmModal({
+          title: 'Approve this KYC?',
+          body: 'The user will be marked as verified and notified.',
+          confirmLabel: 'Approve',
+        });
+        if (!ok) return;
+        const r = await fetch(`/api/admin/kyc/${targetUserId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.textContent = 'KYC approved. User notified.';
+          OrionUI.toast('KYC approved', 'success', 2000);
+          setTimeout(load, 800);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not approve.';
+        }
+      }
+    });
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    load();
+  })();
+</script>
+{% endblock %}
