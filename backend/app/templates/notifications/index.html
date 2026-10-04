@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Notifications — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/beneficiaries'">Beneficiaries</button>
+  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button onclick="window.location.href='/webhooks'">Webhooks</button>
+  <button class="active" aria-current="page">Notifications</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 800px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Activity center</div>
+      <h2>Notifications</h2>
+      <div class="acc" id="meta">Loading…</div>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn ghost icon" id="filterUnread" style="width: auto; margin: 0;">Show unread only</button>
+      <button class="btn ghost icon" id="markAllRead" style="width: auto; margin: 0;">Mark all read</button>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <ul class="history" id="notifList">
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    let unreadOnly = false;
+
+    function authHeaders() {
+      return { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
+
+    async function load() {
+      try {
+        const params = unreadOnly ? '?unread_only=true' : '';
+        const list = await fetch(`/api/notifications${params}`, { headers: authHeaders() }).then((r) => r.json());
+        render(list);
+      } catch {
+        OrionUI.toast('Could not load notifications.', 'error');
+      }
+    }
+
+    function render(items) {
+      const ul = document.getElementById('notifList');
+      const meta = document.getElementById('meta');
+      const unread = items.filter((n) => !n.is_read).length;
+      meta.textContent = `${items.length} shown · ${unread} unread`;
+      ul.innerHTML = '';
+      if (items.length === 0) {
+        ul.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No notifications</h4><p>You're all caught up${unreadOnly ? ' (in your unread filter)' : ''}.</p></div>`;
+        return;
+      }
+      for (const n of items) {
+        const li = document.createElement('li');
+        const levelColor = n.level === 'success' ? 'var(--success)' : n.level === 'warn' ? 'var(--accent)' : n.level === 'error' ? 'var(--danger)' : 'var(--info)';
+        li.style.cursor = n.is_read ? 'default' : 'pointer';
+        li.style.opacity = n.is_read ? '0.7' : '1';
+        li.innerHTML = `
+          <span class="dot" style="background: ${levelColor};"></span>
+          <div style="flex: 1;">
+            <strong>${escapeHtml(n.title)}</strong>${n.is_read ? '' : ' <span class="badge warn" style="font-size: 10px;">new</span>'}
+            ${n.body ? `<div style="color: var(--text-dim); font-size: 12px; margin-top: 2px;">${escapeHtml(n.body)}</div>` : ''}
+            <span class="time">${OrionUI.fmtDate(n.created_at)}</span>
+          </div>
+          ${n.is_read ? '' : '<button class="btn ghost icon mark-one" data-id="' + n.id + '" style="width:auto;margin:0;padding:4px 10px;font-size:11px;">Mark read</button>'}`;
+        ul.appendChild(li);
+      }
+
+      ul.querySelectorAll('.mark-one').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await fetch(`/api/notifications/${btn.dataset.id}/read`, { method: 'POST', headers: authHeaders() });
+          load();
+        });
+      });
+
+      // Click row to mark read (only if unread)
+      ul.querySelectorAll('li').forEach((li, idx) => {
+        const n = items[idx];
+        if (!n.is_read) {
+          li.addEventListener('click', async () => {
+            await fetch(`/api/notifications/${n.id}/read`, { method: 'POST', headers: authHeaders() });
+            load();
+          });
+        }
+      });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    document.getElementById('filterUnread').addEventListener('click', (e) => {
+      unreadOnly = !unreadOnly;
+      e.target.textContent = unreadOnly ? 'Show all' : 'Show unread only';
+      load();
+    });
+
+    document.getElementById('markAllRead').addEventListener('click', async () => {
+      await fetch('/api/notifications/read-all', { method: 'POST', headers: authHeaders() });
+      OrionUI.toast('All marked as read', 'success', 1500);
+      load();
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

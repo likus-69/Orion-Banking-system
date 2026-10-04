@@ -164,3 +164,11 @@ def beneficiaries_page(request: Request):
     return request.app.state.templates.TemplateResponse(
         "beneficiaries/index.html", _ctx(request, page="beneficiaries")
     )
+
+
+# ── Notifications center ──────────────────────────────────────────
+@router.get("/notifications", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def notifications_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "notifications/index.html", _ctx(request, page="notifications")
+    )

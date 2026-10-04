@@ -32,6 +32,16 @@ def list_notifications(
     ]
 
 
+@router.get("/unread-count")
+def get_unread_count(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lightweight endpoint polled every 30s by the topnav bell badge."""
+    repo = NotificationRepository(db)
+    return {"unread_count": repo.count_unread(current_user.id)}
+
+
 @router.post("/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
 def mark_read(
     notification_id: int,
