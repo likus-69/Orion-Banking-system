@@ -119,6 +119,13 @@ def admin_users_page(request: Request):
     )
 
 
+@router.get("/admin/audit-logs", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_audit_logs_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "admin/audit_logs.html", _ctx(request, page="admin_audit_logs")
+    )
+
+
 # ── Webhooks management ──────────────────────────────────────────
 @router.get("/webhooks", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
 def webhooks_page(request: Request):

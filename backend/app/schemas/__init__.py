@@ -8,6 +8,7 @@ from app.schemas.admin import (
     KycApproveRequest,
     KycRejectRequest,
 )
+from app.schemas.audit import AuditLogListResponse, AuditLogOut
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -56,6 +57,8 @@ __all__ = [
     "AdminStatsOut",
     "AdminUserListOut",
     "AdminUserOut",
+    "AuditLogListResponse",
+    "AuditLogOut",
     "BeneficiaryCreateRequest",
     "BeneficiaryOut",
     "BeneficiarySaveFromTransferRequest",
