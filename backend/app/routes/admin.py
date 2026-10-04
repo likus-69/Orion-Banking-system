@@ -4,7 +4,7 @@ All routes require admin role (via get_admin_user dependency).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.deps import get_admin_user, get_db
@@ -18,6 +18,7 @@ from app.schemas.admin import (
 )
 from app.services.admin_service import AdminService
 from app.services.email_service import EmailService
+from app.services.totp_service import TotpService
 from app.services.webhook_service import WebhookEvents, WebhookService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_admin_user)])
@@ -66,6 +67,23 @@ def unlock_user(
 ):
     service = AdminService(db)
     return service.unlock_account(admin, user_id)
+
+
+@router.post("/users/{user_id}/disable-2fa", response_model=AdminUserOut)
+def admin_disable_2fa(
+    user_id: int,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Admin force-disables 2FA on a user (e.g. user lost their authenticator).
+
+    All TOTP data (secret, backup codes, enabled flag) is cleared.
+    """
+    admin_service = AdminService(db)
+    target = admin_service.get_user(user_id)
+    TotpService(db).admin_disable(admin, target)
+    db.refresh(target)
+    return target
 
 
 # ── KYC review ────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.statement_service import StatementService
 from app.services.token_service import TokenService
+from app.services.totp_service import TotpService
 from app.services.transaction_service import TransactionService
 from app.services.webhook_service import WebhookEvents, WebhookService
 
@@ -19,6 +20,7 @@ __all__ = [
     "EmailService",
     "StatementService",
     "TokenService",
+    "TotpService",
     "TransactionService",
     "WebhookEvents",
     "WebhookService",

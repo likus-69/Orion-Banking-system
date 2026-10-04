@@ -88,7 +88,13 @@ class AuthService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
         request_id: Optional[str] = None,
-    ) -> tuple[User, str, str, int]:
+    ) -> tuple[User, Optional[str], Optional[str], Optional[int], Optional[str]]:
+        """Returns one of two outcomes:
+            - (user, access, refresh, expires_in, None)  → fully logged in
+            - (user, None, None, None, challenge_token) → 2FA required
+
+        The challenge token authorises a single call to /api/auth/verify-totp.
+        """
         user = self.users.get_by_email(email)
         if user is None:
             # Always run a hash verify to avoid timing attacks revealing which emails exist.
@@ -119,6 +125,25 @@ class AuthService:
             self.db.commit()
             raise AuthenticationError("Invalid email or PIN.")
 
+        # PIN verified — if 2FA is enabled, return a challenge token instead of full tokens.
+        if user.totp_enabled:
+            from app.services.totp_service import create_challenge_token
+
+            self.users.reset_failed_login(user)
+            challenge = create_challenge_token(user.email)
+            self.audit.log(
+                user_id=user.id,
+                action="login_2fa_challenge_issued",
+                details="PIN verified; 2FA challenge token issued",
+                ip_address=ip_address,
+                user_agent=user_agent,
+                request_id=request_id,
+            )
+            self.db.commit()
+            log.info("user.login.2fa_challenge", user_id=user.id)
+            return user, None, None, None, challenge
+
+        # No 2FA — issue tokens immediately.
         self.users.reset_failed_login(user)
         access, refresh, expires_in = self.tokens.issue_token_pair(user)
         self.audit.log(
@@ -131,7 +156,67 @@ class AuthService:
         )
         self.db.commit()
         log.info("user.login", user_id=user.id)
-        return user, access, refresh, expires_in
+        return user, access, refresh, expires_in, None
+
+    # ── 2FA verification ──────────────────────────────────────────
+    def verify_totp(
+        self,
+        *,
+        challenge_token: str,
+        code: Optional[str] = None,
+        backup_code: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> tuple[str, str, int]:
+        """Exchange a challenge token + TOTP code (or backup code) for real tokens.
+
+        Returns (access, refresh, expires_in).
+        """
+        from app.services.totp_service import TotpService
+
+        email = None
+        try:
+            from app.services.totp_service import decode_challenge_token
+            email = decode_challenge_token(challenge_token)
+        except Exception:
+            raise AuthenticationError("Invalid or expired challenge token.")
+
+        user = self.users.get_by_email(email)
+        if user is None or not user.totp_enabled:
+            raise AuthenticationError("2FA not enabled on this account.")
+
+        svc = TotpService(self.db)
+        verified = False
+        if code:
+            verified = svc.verify_code(user, code)
+        if not verified and backup_code:
+            verified = svc.use_backup_code(user, backup_code)
+
+        if not verified:
+            self.audit.log(
+                user_id=user.id,
+                action="login_2fa_failed",
+                details="Wrong TOTP code or backup code",
+                ip_address=ip_address,
+                user_agent=user_agent,
+                request_id=request_id,
+            )
+            self.db.commit()
+            raise AuthenticationError("Invalid TOTP code or backup code.")
+
+        access, refresh, expires_in = self.tokens.issue_token_pair(user)
+        self.audit.log(
+            user_id=user.id,
+            action="login_2fa_success",
+            details="User logged in with 2FA",
+            ip_address=ip_address,
+            user_agent=user_agent,
+            request_id=request_id,
+        )
+        self.db.commit()
+        log.info("user.login.2fa_success", user_id=user.id)
+        return access, refresh, expires_in
 
     # ── Refresh ────────────────────────────────────────────────────
     def refresh(self, refresh_token: str) -> tuple[str, str, int]:

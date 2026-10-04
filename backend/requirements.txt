@@ -30,6 +30,9 @@ structlog==24.4.0          # structured logging
 
 # ─── New features ─────────────────────────────────────────────────
 reportlab==4.2.4           # statement PDF export
+pyotp==2.10.0              # TOTP / 2FA
+qrcode[pil]==8.2           # QR code generation for 2FA setup
+cryptography==50.0.2       # Fernet encryption for TOTP secrets at rest
 
 # ─── Testing ─────────────────────────────────────────────────────
 pytest==8.3.2

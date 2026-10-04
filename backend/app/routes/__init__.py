@@ -1,6 +1,19 @@
 """API + page routes — thin wrappers around services. No business logic here."""
 from __future__ import annotations
 
-from app.routes import accounts, admin, auth, notifications, pages, statements, transactions, webhooks
+from app.routes import (
+    accounts,
+    admin,
+    auth,
+    notifications,
+    pages,
+    statements,
+    totp,
+    transactions,
+    webhooks,
+)
 
-__all__ = ["accounts", "admin", "auth", "notifications", "pages", "statements", "transactions", "webhooks"]
+__all__ = [
+    "accounts", "admin", "auth", "notifications", "pages",
+    "statements", "totp", "transactions", "webhooks",
+]

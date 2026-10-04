@@ -6,7 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, get_request_meta
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenPair
+from app.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    RefreshRequest,
+    RegisterRequest,
+    TokenPair,
+    VerifyTotpRequest,
+)
 from app.schemas.user import UserOut
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
@@ -35,13 +42,42 @@ def register(
     return user
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     meta = get_request_meta(request)
     service = AuthService(db)
-    _, access, refresh, expires_in = service.login(
+    _, access, refresh, expires_in, challenge = service.login(
         email=payload.email,
         pin=payload.pin,
+        **meta,
+    )
+    if challenge:
+        # 2FA required
+        return LoginResponse(
+            needs_totp=True,
+            challenge_token=challenge,
+        )
+    return LoginResponse(
+        access_token=access,
+        refresh_token=refresh,
+        token_type="bearer",
+        expires_in=expires_in,
+    )
+
+
+@router.post("/verify-totp", response_model=TokenPair)
+def verify_totp(
+    payload: VerifyTotpRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Exchange a challenge token + TOTP code (or backup code) for a real token pair."""
+    meta = get_request_meta(request)
+    service = AuthService(db)
+    access, refresh, expires_in = service.verify_totp(
+        challenge_token=payload.challenge_token,
+        code=payload.code,
+        backup_code=payload.backup_code,
         **meta,
     )
     return TokenPair(

@@ -10,7 +10,7 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 
 ### Backend
 - **Layered architecture**: routes → services → repositories → models
-- **Auth**: bcrypt-hashed PINs, JWT access + refresh token pair, single-use refresh rotation, weak-PIN rejection, login lockout after 5 failures, timing-attack safe login
+- **Auth**: bcrypt-hashed PINs, JWT access + refresh token pair, single-use refresh rotation, weak-PIN rejection, login lockout after 5 failures, timing-attack safe login, **two-factor authentication (TOTP) with encrypted-at-rest secrets + single-use backup codes**
 - **Concurrency-safe money movement**: `SELECT FOR UPDATE` row locks on transfers/withdrawals/deposits, deterministic lock ordering to avoid deadlocks, idempotency keys for transfers
 - **New features**: KYC fields, transaction categories/types/statuses, in-app notifications, statement PDF export, request-ID middleware, IP/User-Agent audit logging, **transactional email notifications**
 - **Hardening**: CORS allowlist, rate limiting (slowapi), structured logging (structlog), GZip middleware, consistent JSON error shape with request IDs
@@ -30,7 +30,7 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
 
 ### Testing
-- 76 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, and webhooks
+- 98 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, and 2FA
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -189,6 +189,48 @@ For testing, set `EMAIL_BACKEND=memory` — sent emails are captured in-process 
 
 ---
 
+## 🔐 Two-Factor Authentication (TOTP)
+
+Users can opt into 2FA via a standard TOTP authenticator app (Google Authenticator, 1Password, Authy, etc.).
+
+### Setup flow
+
+1. **`POST /api/2fa/setup`** — generates an encrypted TOTP secret + QR PNG (base64-encoded)
+2. User scans the QR with their authenticator app
+3. **`POST /api/2fa/verify`** — submits the first 6-digit code; on success, enables 2FA + returns 10 single-use backup codes (shown once)
+4. **`POST /api/2fa/status`** — query enabled state + backup codes remaining
+
+### Login flow with 2FA
+
+1. **`POST /api/auth/login`** — if 2FA enabled, returns `{ needs_totp: true, challenge_token: "..." }` instead of access tokens
+2. **`POST /api/auth/verify-totp`** — exchanges `challenge_token` + 6-digit TOTP code (or 8-char backup code) for real access + refresh tokens
+3. Challenge token expires in 10 minutes
+
+### Backup codes
+
+- 10 codes generated at setup, 8 chars each (alphanumeric, no ambiguous chars like `0`/`O`/`1`/`I`)
+- Stored as bcrypt hashes — DB leak doesn't compromise them
+- Single-use — consumed on login
+- **`POST /api/2fa/regenerate-backup-codes`** — invalidates old codes, returns 10 new ones (requires current code or backup code as auth)
+
+### Disable
+
+- **`POST /api/2fa/disable`** — requires current TOTP code or backup code as authorization
+- **`POST /api/admin/users/{id}/disable-2fa`** — admin force-disable (for locked-out users)
+
+### Secret encryption
+
+TOTP secrets are encrypted at rest using Fernet (symmetric encryption from the `cryptography` library). The encryption key is derived from `SECRET_KEY` via SHA-256. This means:
+- DB leak alone doesn't expose 2FA secrets
+- If `SECRET_KEY` changes, encrypted secrets become undecryptable (users must reset 2FA)
+
+### UI
+
+- Settings page has a "Two-factor authentication" section showing status + backup codes remaining + Enable/Disable/Regenerate buttons
+- Login page shows a TOTP code input card when `needs_totp=true` is returned
+
+---
+
 ## 🔔 Webhooks
 
 Users can register webhook URLs to receive event notifications when money moves through their account (or when their KYC status changes). Each delivery is HMAC-SHA256-signed and persisted for audit.
@@ -300,8 +342,8 @@ uvicorn app.main:app
 
 - ~~Email notifications (SMTP integration)~~ ✅ Done
 - ~~Webhooks for transaction events~~ ✅ Done
+- ~~Two-factor authentication (TOTP)~~ ✅ Done
 - Scheduled / recurring transfers (background task queue)
-- Two-factor authentication (TOTP)
 
 ---
 
