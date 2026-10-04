@@ -1,0 +1,12 @@
+Transfer sent — {{ amount }}
+
+Hi {{ user.full_name }},
+
+Your transfer of {{ amount }} to {{ recipient_name }} (account {{ recipient_account }}) has been completed.
+
+Reference: {{ reference }}
+{% if memo %}Memo: {{ memo }}
+{% endif %}
+New balance: {{ new_balance }}
+
+— {{ app_name }}

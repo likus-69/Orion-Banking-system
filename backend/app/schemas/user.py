@@ -55,6 +55,11 @@ class UserOut(BaseModel):
     country: Optional[str] = None
     kyc_status: KycStatus
     kyc_rejection_reason: Optional[str] = None
+    email_on_deposit: bool = True
+    email_on_withdrawal: bool = True
+    email_on_transfer_in: bool = True
+    email_on_transfer_out: bool = True
+    email_on_kyc_decision: bool = True
     is_active: bool = True
     created_at: datetime
 
@@ -72,8 +77,21 @@ class UserUpdateRequest(BaseModel):
     phone: Optional[str] = Field(None, max_length=20)
 
 
+class NotificationPreferencesUpdate(BaseModel):
+    """Update email notification preferences."""
+
+    email_on_deposit: Optional[bool] = None
+    email_on_withdrawal: Optional[bool] = None
+    email_on_transfer_in: Optional[bool] = None
+    email_on_transfer_out: Optional[bool] = None
+    email_on_kyc_decision: Optional[bool] = None
+
+
 class NotificationPreferences(BaseModel):
-    email_on_transfer_in: bool = True
-    email_on_transfer_out: bool = True
+    """Read-only view of notification preferences."""
+
     email_on_deposit: bool = True
     email_on_withdrawal: bool = True
+    email_on_transfer_in: bool = True
+    email_on_transfer_out: bool = True
+    email_on_kyc_decision: bool = True

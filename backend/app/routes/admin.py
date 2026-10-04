@@ -4,7 +4,7 @@ All routes require admin role (via get_admin_user dependency).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.deps import get_admin_user, get_db
@@ -17,6 +17,7 @@ from app.schemas.admin import (
     KycRejectRequest,
 )
 from app.services.admin_service import AdminService
+from app.services.email_service import EmailService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_admin_user)])
 
@@ -82,19 +83,29 @@ def list_pending_kyc(
 def approve_kyc(
     user_id: int,
     payload: KycApproveRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     service = AdminService(db)
-    return service.approve_kyc(admin, user_id, notes=payload.notes)
+    target = service.approve_kyc(admin, user_id, notes=payload.notes)
+    EmailService(db, background_tasks=background_tasks).send_kyc_approved(
+        target, reviewed_by=admin.full_name,
+    )
+    return target
 
 
 @router.post("/kyc/{user_id}/reject", response_model=AdminUserOut)
 def reject_kyc(
     user_id: int,
     payload: KycRejectRequest,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
     service = AdminService(db)
-    return service.reject_kyc(admin, user_id, reason=payload.reason)
+    target = service.reject_kyc(admin, user_id, reason=payload.reason)
+    EmailService(db, background_tasks=background_tasks).send_kyc_rejected(
+        target, reason=payload.reason, reviewed_by=admin.full_name,
+    )
+    return target

@@ -79,6 +79,13 @@ class User(Base):
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
+    # ── Email notification preferences (all default ON) ──────────
+    email_on_deposit: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_on_withdrawal: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_on_transfer_in: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_on_transfer_out: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_on_kyc_decision: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False

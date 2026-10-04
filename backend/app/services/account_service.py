@@ -71,3 +71,40 @@ class AccountService:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def update_notification_preferences(
+        self,
+        user: User,
+        *,
+        email_on_deposit: Optional[bool] = None,
+        email_on_withdrawal: Optional[bool] = None,
+        email_on_transfer_in: Optional[bool] = None,
+        email_on_transfer_out: Optional[bool] = None,
+        email_on_kyc_decision: Optional[bool] = None,
+    ) -> User:
+        """Update one or more email notification preferences."""
+        changed = []
+        if email_on_deposit is not None:
+            user.email_on_deposit = email_on_deposit
+            changed.append("deposit")
+        if email_on_withdrawal is not None:
+            user.email_on_withdrawal = email_on_withdrawal
+            changed.append("withdrawal")
+        if email_on_transfer_in is not None:
+            user.email_on_transfer_in = email_on_transfer_in
+            changed.append("transfer_in")
+        if email_on_transfer_out is not None:
+            user.email_on_transfer_out = email_on_transfer_out
+            changed.append("transfer_out")
+        if email_on_kyc_decision is not None:
+            user.email_on_kyc_decision = email_on_kyc_decision
+            changed.append("kyc_decision")
+        if changed:
+            self.audit.log(
+                user_id=user.id,
+                action="notification_prefs_updated",
+                details=f"Updated email prefs: {', '.join(changed)}",
+            )
+        self.db.commit()
+        self.db.refresh(user)
+        return user

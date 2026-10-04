@@ -1,0 +1,11 @@
+KYC needs revision
+
+Hi {{ user.full_name }},
+
+Your KYC submission was reviewed by {{ reviewed_by }} and needs revision.
+
+Reason: {{ reason }}
+
+Please update your information in Settings → KYC and resubmit for review.
+
+— {{ app_name }}

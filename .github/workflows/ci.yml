@@ -40,6 +40,7 @@ jobs:
           SECRET_KEY: "ci-secret-key-not-for-production-32-chars-or-more"
           ENV: "dev"
           LOG_LEVEL: "WARNING"
+          EMAIL_BACKEND: "memory"
         run: |
           pytest tests/ -v --tb=short
 

@@ -57,6 +57,36 @@
     <button class="btn ghost icon" id="markAllRead" style="margin-top:16px;">Mark all as read</button>
   </div>
 
+  <!-- Email preferences -->
+  <div class="section-card">
+    <h3>Email preferences</h3>
+    <p class="sub">Choose which events should trigger an email notification.</p>
+    <form id="emailPrefsForm">
+      <div class="list-row">
+        <div class="info"><span>Deposit confirmations</span></div>
+        <div><label style="display:inline-flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="prefDeposit" style="width:auto;"> Email me on deposit</label></div>
+      </div>
+      <div class="list-row">
+        <div class="info"><span>Withdrawal confirmations</span></div>
+        <div><label style="display:inline-flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="prefWithdrawal" style="width:auto;"> Email me on withdrawal</label></div>
+      </div>
+      <div class="list-row">
+        <div class="info"><span>Incoming transfers</span></div>
+        <div><label style="display:inline-flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="prefTransferIn" style="width:auto;"> Email me when I receive</label></div>
+      </div>
+      <div class="list-row">
+        <div class="info"><span>Outgoing transfers</span></div>
+        <div><label style="display:inline-flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="prefTransferOut" style="width:auto;"> Email me when I send</label></div>
+      </div>
+      <div class="list-row">
+        <div class="info"><span>KYC decisions</span></div>
+        <div><label style="display:inline-flex;align-items:center;gap:8px;margin:0;"><input type="checkbox" id="prefKycDecision" style="width:auto;"> Email me on KYC review</label></div>
+      </div>
+      <button type="submit" class="btn">Save email preferences</button>
+      <div class="msg" id="emailPrefsMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+
   <!-- Danger zone -->
   <div class="section-card">
     <h3>Danger zone</h3>
@@ -157,6 +187,49 @@
       OrionUI.toast('All marked as read', 'success', 1500);
     });
 
+    // ── Email preferences ────────────────────────────────────────
+    async function loadEmailPrefs() {
+      try {
+        const me = await OrionAPI.me();
+        document.getElementById('prefDeposit').checked = me.email_on_deposit;
+        document.getElementById('prefWithdrawal').checked = me.email_on_withdrawal;
+        document.getElementById('prefTransferIn').checked = me.email_on_transfer_in;
+        document.getElementById('prefTransferOut').checked = me.email_on_transfer_out;
+        document.getElementById('prefKycDecision').checked = me.email_on_kyc_decision;
+      } catch {}
+    }
+
+    document.getElementById('emailPrefsForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('emailPrefsMsg');
+      msg.className = 'msg';
+      const payload = {
+        email_on_deposit: document.getElementById('prefDeposit').checked,
+        email_on_withdrawal: document.getElementById('prefWithdrawal').checked,
+        email_on_transfer_in: document.getElementById('prefTransferIn').checked,
+        email_on_transfer_out: document.getElementById('prefTransferOut').checked,
+        email_on_kyc_decision: document.getElementById('prefKycDecision').checked,
+      };
+      try {
+        const r = await fetch('/api/accounts/me/notification-prefs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.textContent = 'Email preferences saved.';
+          OrionUI.toast('Preferences updated', 'success', 2000);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || 'Could not save preferences.';
+        }
+      } catch {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error.';
+      }
+    });
+
     document.getElementById('revokeSessionsBtn').addEventListener('click', async () => {
       const ok = await OrionUI.confirmModal({
         title: 'Revoke all sessions?',
@@ -171,6 +244,7 @@
 
     loadProfile();
     loadNotifications();
+    loadEmailPrefs();
   })();
 </script>
 {% endblock %}

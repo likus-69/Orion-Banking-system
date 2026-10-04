@@ -25,6 +25,7 @@ from app.schemas.transaction import (
 from app.schemas.user import (
     KYCUpdateRequest,
     NotificationPreferences,
+    NotificationPreferencesUpdate,
     UserOut,
     UserUpdateRequest,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "LoginRequest",
     "NotificationOut",
     "NotificationPreferences",
+    "NotificationPreferencesUpdate",
     "RefreshRequest",
     "RegisterRequest",
     "StatementRequest",

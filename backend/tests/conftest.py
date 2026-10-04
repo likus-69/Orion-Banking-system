@@ -21,6 +21,8 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_orion.db"  # file-backed for cros
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production-32chars-or-more"
 os.environ["ENV"] = "dev"
 os.environ["LOG_LEVEL"] = "WARNING"
+# Use the in-memory email backend so tests can assert what got sent.
+os.environ["EMAIL_BACKEND"] = "memory"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,16 +31,21 @@ from sqlalchemy.orm import Session
 from app.database import Base, SessionLocal, engine
 from app.main import app
 from app.models.user import KycStatus, User, UserRole
+from app.services.email_service import get_sent_emails, reset_sent_emails
 from app.services.token_service import hash_pin
 
 
 @pytest.fixture(scope="function", autouse=True)
 def reset_db() -> Iterator[None]:
     """Drop + recreate all tables before every test."""
+    from app.services.email_service import reset_sent_emails
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    reset_sent_emails()
     yield
     Base.metadata.drop_all(bind=engine)
+    reset_sent_emails()
 
 
 @pytest.fixture()

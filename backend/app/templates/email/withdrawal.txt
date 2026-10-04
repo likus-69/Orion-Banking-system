@@ -1,0 +1,12 @@
+Withdrawal confirmed — {{ amount }}
+
+Hi {{ user.full_name }},
+
+Your withdrawal of {{ amount }} has been processed.
+
+Reference: {{ reference }}
+{% if memo %}Memo: {{ memo }}
+{% endif %}
+New balance: {{ new_balance }}
+
+— {{ app_name }}

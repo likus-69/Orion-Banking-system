@@ -1,0 +1,12 @@
+Deposit confirmed — {{ amount }}
+
+Hi {{ user.full_name }},
+
+Your deposit of {{ amount }} has been credited to your account.
+
+Reference: {{ reference }}
+{% if memo %}Memo: {{ memo }}
+{% endif %}
+New balance: {{ new_balance }}
+
+— {{ app_name }}
