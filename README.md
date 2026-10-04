@@ -28,11 +28,12 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Statement PDF export** (reportlab-generated on the backend)
 - **Toast notifications**, loading skeletons, empty states, optimistic UI updates, accessibility (ARIA, keyboard nav)
 - **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
+- **Beneficiaries** — saved recipients with category, nickname, typeahead search in transfer forms, opportunistic auto-save after one-time transfers
 - **Scheduled transfers** — one-time, daily, weekly, monthly recurring transfers with auto-retry, failure threshold, pause/resume/cancel, execution audit trail
 - **Webhooks** — per-user subscriptions with HMAC-SHA256 signed payloads + retry policy + delivery history
 
 ### Testing
-- 114 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, 2FA, and scheduled transfers
+- 133 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, 2FA, scheduled transfers, and beneficiaries
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -272,6 +273,40 @@ Automate recurring money movement — rent, salary splits, savings, etc. Schedul
 
 - `/scheduled-transfers` page with create wizard (name + recipient + amount + schedule type + per-type config) and list of your schedules with status badges + next-run times
 - `/scheduled-transfers/{id}` detail page with full config, execution history, and pause/resume/cancel buttons
+
+---
+
+## 👥 Beneficiaries
+
+Save recipients you transfer to often — type the first few letters of their name or account number in any transfer form to get a quick typeahead dropdown.
+
+### Features
+
+- **Validation on save**: recipient account number must exist in the system (prevents typos)
+- **No duplicates**: a user can only save a given recipient once
+- **Categories**: family, friend, business, utility, other (color-coded in UI)
+- **Nicknames**: optional alias for easier search
+- **Cap**: 50 beneficiaries per user (reasonable limit)
+- **Typeahead search**: in transfer + scheduled-transfer forms, start typing account number, recipient name, or nickname — matching beneficiaries appear as a dropdown
+- **Auto-save prompt**: after a successful one-time transfer to a non-saved recipient, a toast offers "Save as beneficiary?"
+
+### API endpoints (all under `/api/beneficiaries`, all auth-required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `` | List your beneficiaries |
+| `POST` | `` | Create (validates recipient exists + not self + not already saved) |
+| `GET`  | `/search?q=...` | Typeahead search (max 10 results) |
+| `GET`  | `/{id}` | Get one |
+| `PATCH`| `/{id}` | Update nickname + category |
+| `DELETE` | `/{id}` | Delete |
+| `POST` | `/save-from-transfer` | Opportunistic save — returns existing if already saved |
+
+### UI
+
+- `/beneficiaries` page with create form + searchable list + edit + delete + "Transfer →" shortcut
+- Transfer form has a typeahead dropdown that appears as you type the recipient account number
+- Scheduled-transfer form has the same typeahead
 
 ---
 

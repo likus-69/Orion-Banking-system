@@ -149,3 +149,11 @@ def scheduled_transfer_detail_page(request: Request, schedule_id: int):
         "scheduled_transfers/detail.html",
         _ctx(request, page="scheduled_transfer_detail", schedule_id=schedule_id),
     )
+
+
+# ── Beneficiaries ─────────────────────────────────────────────────
+@router.get("/beneficiaries", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def beneficiaries_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "beneficiaries/index.html", _ctx(request, page="beneficiaries")
+    )

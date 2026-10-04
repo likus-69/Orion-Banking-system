@@ -6,9 +6,10 @@
   <button onclick="window.location.href='/deposit'">Deposit</button>
   <button onclick="window.location.href='/transactions'">Transactions</button>
   <button class="active" aria-current="page">Transfer</button>
+  <button onclick="window.location.href='/beneficiaries'">Beneficiaries</button>
+  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
   <button onclick="window.location.href='/settings'">Settings</button>
   <button onclick="window.location.href='/profile'">Profile</button>
-  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
   <button onclick="window.location.href='/webhooks'">Webhooks</button>
   <button class="danger" data-action="logout">Log out</button>
 {% endblock %}
@@ -25,12 +26,14 @@
 
   <div class="section-card">
     <h3>New transfer</h3>
-    <p class="sub">Move money to another Orion Banking account instantly.</p>
+    <p class="sub">Move money to another Orion Banking account instantly. Saved beneficiaries will appear as you type.</p>
 
     <form id="transferForm" autocomplete="off" novalidate>
       <label for="trAcc">Recipient account number</label>
       <input id="trAcc" type="text" inputmode="numeric"
-             placeholder="e.g. 48291038475912" minlength="14" maxlength="14" required>
+             placeholder="e.g. 48291038475912" minlength="14" maxlength="14" required
+             autocomplete="off">
+      <div id="trSuggestions" style="position: relative;"></div>
       <div class="msg" id="trWhoMsg" style="margin-top:8px;"></div>
 
       <div class="row2">
@@ -54,7 +57,18 @@
 {% block extra_scripts %}
 <script>
   (function () {
-    if (!OrionUI.requireAuth()) return;
+    if (!OrionUI.requireAuth('/login')) return;
+
+    // Pre-fill recipient if user clicked "Transfer →" from a Beneficiary card
+    const pending = localStorage.getItem('pending_transfer_recipient');
+    if (pending) {
+      document.getElementById('trAcc').value = pending;
+      localStorage.removeItem('pending_transfer_recipient');
+    }
+
+    function authHeaders() {
+      return { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
 
     async function loadBalance() {
       try {
@@ -63,6 +77,61 @@
       } catch {}
     }
 
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    // ── Typeahead: search beneficiaries as user types ──────────────
+    const accInput = document.getElementById('trAcc');
+    const suggestions = document.getElementById('trSuggestions');
+    let searchTimer = null;
+
+    accInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      const q = e.target.value.trim();
+      if (q.length < 1) {
+        suggestions.innerHTML = '';
+        return;
+      }
+      searchTimer = setTimeout(async () => {
+        const results = await fetch(`/api/beneficiaries/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() }).then((r) => r.json());
+        if (!results || results.length === 0) {
+          suggestions.innerHTML = '';
+          return;
+        }
+        suggestions.innerHTML = `
+          <div style="position: absolute; top: 4px; left: 0; right: 0; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-soft); z-index: 10; max-height: 240px; overflow-y: auto;">
+            ${results.map((b) => `
+              <div class="suggestion-item" data-acc="${b.recipient_account_number}" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px;">
+                <strong>${escapeHtml(b.nickname || b.recipient_name)}</strong>
+                <span style="color: var(--text-dim); font-size: 12px;"> · ${escapeHtml(b.recipient_name)} · <code>${b.recipient_account_number}</code></span>
+                <span class="badge" style="margin-left: 6px; font-size: 10px;">${b.category}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        suggestions.querySelectorAll('.suggestion-item').forEach((el) => {
+          el.addEventListener('click', () => {
+            accInput.value = el.dataset.acc;
+            suggestions.innerHTML = '';
+            document.getElementById('trAmt').focus();
+          });
+          el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg-input)'; });
+          el.addEventListener('mouseleave', () => { el.style.background = ''; });
+        });
+      }, 200);
+    });
+
+    // Hide suggestions on outside click
+    document.addEventListener('click', (e) => {
+      if (!suggestions.contains(e.target) && e.target !== accInput) {
+        suggestions.innerHTML = '';
+      }
+    });
+
+    // ── Transfer submit ──────────────────────────────────────────
     const form = document.getElementById('transferForm');
     const msg = document.getElementById('trMsg');
     const submit = document.getElementById('trSubmit');
@@ -103,9 +172,11 @@
         if (r && r.reference) {
           msg.className = 'msg ok show';
           msg.textContent = `Transfer of $${amt.toFixed(2)} succeeded (ref ${r.reference}).`;
+          const lastAcc = acc;
           form.reset();
           loadBalance();
           OrionUI.toast('Transfer complete', 'success', 2500);
+          offerSaveBeneficiary(lastAcc);
         } else {
           msg.className = 'msg err show';
           msg.textContent = r?.error?.message || 'Transfer failed.';
@@ -119,10 +190,47 @@
       }
     });
 
-    function escapeHtml(s) {
-      const d = document.createElement('div');
-      d.textContent = s;
-      return d.innerHTML;
+    function offerSaveBeneficiary(acc) {
+      fetch(`/api/beneficiaries/search?q=${encodeURIComponent(acc)}`, { headers: authHeaders() })
+        .then((r) => r.json())
+        .then((existing) => {
+          if (existing && existing.some((b) => b.recipient_account_number === acc)) {
+            return;
+          }
+          const container = document.getElementById('toastContainer') || (() => {
+            const c = document.createElement('div');
+            c.id = 'toastContainer';
+            c.style.cssText = 'position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; flex-direction: column; gap: 8px;';
+            document.body.appendChild(c);
+            return c;
+          })();
+          const el = document.createElement('div');
+          el.className = 'toast info';
+          el.style.cssText = 'background: var(--bg-panel); border: 1px solid var(--border); border-left: 4px solid var(--info); border-radius: 8px; padding: 12px 16px; min-width: 320px; max-width: 380px; box-shadow: var(--shadow-soft); display: flex; align-items: center; gap: 8px; font-size: 13px; animation: slideIn 0.25s ease;';
+          el.innerHTML = `<span>Save this recipient as a beneficiary?</span>`;
+          const saveBtn = document.createElement('button');
+          saveBtn.textContent = 'Save';
+          saveBtn.style.cssText = 'margin-left: auto; background: var(--accent); color: var(--bg); border: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px;';
+          saveBtn.addEventListener('click', async () => {
+            const r = await fetch('/api/beneficiaries/save-from-transfer', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...authHeaders() },
+              body: JSON.stringify({ recipient_account_number: acc }),
+            }).then((r) => r.json());
+            if (r && r.id) {
+              OrionUI.toast(`Saved as "${r.nickname || r.recipient_name}"`, 'success', 2000);
+            }
+            el.remove();
+          });
+          const dismissBtn = document.createElement('button');
+          dismissBtn.textContent = '×';
+          dismissBtn.style.cssText = 'background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 18px; padding: 0 0 0 4px;';
+          dismissBtn.addEventListener('click', () => el.remove());
+          el.appendChild(saveBtn);
+          el.appendChild(dismissBtn);
+          container.appendChild(el);
+          setTimeout(() => el.remove(), 10000);
+        });
     }
 
     loadBalance();

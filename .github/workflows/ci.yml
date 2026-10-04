@@ -42,7 +42,7 @@ jobs:
           LOG_LEVEL: "WARNING"
           EMAIL_BACKEND: "memory"
         run: |
-          pytest tests/ -v --tb=short
+          pytest tests/ -v --tb=short --rootdir=.
 
       - name: Upload coverage summary
         if: always()

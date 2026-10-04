@@ -10,23 +10,32 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import (
     LoginRequest,
+    LoginResponse,
     RefreshRequest,
     RegisterRequest,
     TokenPair,
+    VerifyTotpRequest,
+)
+from app.schemas.beneficiary import (
+    BeneficiaryCreateRequest,
+    BeneficiaryOut,
+    BeneficiarySaveFromTransferRequest,
+    BeneficiarySearchOut,
+    BeneficiaryUpdateRequest,
 )
 from app.schemas.notification import NotificationOut
+from app.schemas.scheduled_transfer import (
+    ScheduledTransferCreateRequest,
+    ScheduledTransferExecutionOut,
+    ScheduledTransferOut,
+    ScheduledTransferUpdateRequest,
+)
 from app.schemas.transaction import (
     DepositRequest,
     StatementRequest,
     TransactionOut,
     TransferRequest,
     WithdrawRequest,
-)
-from app.schemas.scheduled_transfer import (
-    ScheduledTransferCreateRequest,
-    ScheduledTransferExecutionOut,
-    ScheduledTransferOut,
-    ScheduledTransferUpdateRequest,
 )
 from app.schemas.user import (
     KYCUpdateRequest,
@@ -47,11 +56,17 @@ __all__ = [
     "AdminStatsOut",
     "AdminUserListOut",
     "AdminUserOut",
+    "BeneficiaryCreateRequest",
+    "BeneficiaryOut",
+    "BeneficiarySaveFromTransferRequest",
+    "BeneficiarySearchOut",
+    "BeneficiaryUpdateRequest",
     "DepositRequest",
     "KYCUpdateRequest",
     "KycApproveRequest",
     "KycRejectRequest",
     "LoginRequest",
+    "LoginResponse",
     "NotificationOut",
     "NotificationPreferences",
     "NotificationPreferencesUpdate",
@@ -67,6 +82,7 @@ __all__ = [
     "TransferRequest",
     "UserOut",
     "UserUpdateRequest",
+    "VerifyTotpRequest",
     "WebhookCreateRequest",
     "WebhookDeliveryOut",
     "WebhookEventTypeInfo",
