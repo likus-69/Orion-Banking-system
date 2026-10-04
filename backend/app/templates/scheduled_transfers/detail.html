@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Schedule detail — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button class="active" aria-current="page">Schedules</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button onclick="window.location.href='/webhooks'">Webhooks</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 960px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Scheduled transfer</div>
+      <h2 id="scName">Loading…</h2>
+      <div class="acc" id="scSub"></div>
+    </div>
+    <a href="/scheduled-transfers" class="btn ghost icon">← All schedules</a>
+  </div>
+
+  <div class="balance-panel">
+    <div class="label">Status</div>
+    <div class="amount"><span class="badge" id="scStatusBadge" style="font-size: 16px; padding: 8px 16px;">—</span></div>
+    <div class="trend" id="scNextRun">—</div>
+  </div>
+
+  <div class="section-card">
+    <h3>Configuration</h3>
+    <div class="list-row"><div class="info"><span>Recipient</span></div><div><code id="scRecipient">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Amount</span></div><div><strong id="scAmount">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Memo</span></div><div><em id="scMemo">—</em></div></div>
+    <div class="list-row"><div class="info"><span>Schedule type</span></div><div><strong id="scType">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Config</span></div><div><code id="scConfig">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Last run</span></div><div><code id="scLastRun">—</code></div></div>
+    <div class="list-row"><div class="info"><span>Consecutive failures</span></div><div><strong id="scFailures">—</strong></div></div>
+    <div class="list-row"><div class="info"><span>Created</span></div><div><code id="scCreated">—</code></div></div>
+
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;">
+      <button class="btn ghost icon" id="pauseBtn" style="width:auto;">Pause</button>
+      <button class="btn ghost icon" id="resumeBtn" style="width:auto;">Resume</button>
+      <button class="btn ghost icon" id="cancelBtn" style="width:auto; border-color: var(--danger); color: var(--danger);">Cancel schedule</button>
+    </div>
+    <div class="msg" id="actionMsg" role="alert" aria-live="polite"></div>
+  </div>
+
+  <div class="section-card">
+    <h3>Execution history</h3>
+    <p class="sub">Last 50 execution attempts. Click to view details.</p>
+    <ul class="history" id="execList">
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+      <li class="skeleton-row" style="display:block;height:48px;"></li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+    const scheduleId = {{ schedule_id }};
+
+    async function load() {
+      try {
+        const s = await fetch(`/api/scheduled-transfers/${scheduleId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` },
+        }).then((r) => r.json());
+        if (!s || !s.id) {
+          OrionUI.toast('Schedule not found.', 'error');
+          setTimeout(() => { window.location.href = '/scheduled-transfers'; }, 1500);
+          return;
+        }
+        render(s);
+        loadExecutions();
+      } catch {
+        OrionUI.toast('Could not load schedule.', 'error');
+      }
+    }
+
+    function render(s) {
+      document.getElementById('scName').textContent = s.name;
+      document.getElementById('scSub').textContent = `Schedule #${s.id}`;
+      document.getElementById('scRecipient').textContent = s.recipient_account_number;
+      document.getElementById('scAmount').textContent = `$${Number(s.amount).toFixed(2)}`;
+      document.getElementById('scMemo').textContent = s.memo || '—';
+      document.getElementById('scType').textContent = s.schedule_type;
+      document.getElementById('scConfig').textContent = s.schedule_config;
+      document.getElementById('scLastRun').textContent = s.last_run_at ? OrionUI.fmtDate(s.last_run_at) : '—';
+      document.getElementById('scFailures').textContent = String(s.consecutive_failures);
+      document.getElementById('scCreated').textContent = OrionUI.fmtDate(s.created_at);
+
+      const badge = document.getElementById('scStatusBadge');
+      badge.textContent = s.status;
+      const cls = s.status === 'active' ? 'success' : s.status === 'paused' ? 'warn' : s.status === 'completed' ? '' : 'danger';
+      badge.className = `badge ${cls}`;
+
+      document.getElementById('scNextRun').textContent = `Next run: ${OrionUI.fmtDate(s.next_run_at)}`;
+
+      // Toggle action buttons based on status
+      const pauseBtn = document.getElementById('pauseBtn');
+      const resumeBtn = document.getElementById('resumeBtn');
+      pauseBtn.style.display = s.status === 'active' ? 'inline-block' : 'none';
+      resumeBtn.style.display = s.status === 'paused' || s.status === 'failed' ? 'inline-block' : 'none';
+    }
+
+    async function loadExecutions() {
+      try {
+        const list = await fetch(`/api/scheduled-transfers/${scheduleId}/executions`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` },
+        }).then((r) => r.json());
+        const ul = document.getElementById('execList');
+        ul.innerHTML = '';
+        if (list.length === 0) {
+          ul.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No executions yet</h4><p>This schedule hasn't fired yet.</p></div>`;
+          return;
+        }
+        for (const e of list) {
+          const cls = e.status === 'success' ? 'success' : e.status === 'failed' ? 'danger' : 'warn';
+          const dotColor = e.status === 'success' ? 'var(--success)' : e.status === 'failed' ? 'var(--danger)' : 'var(--accent)';
+          const li = document.createElement('li');
+          li.innerHTML = `
+            <span class="dot" style="background: ${dotColor};"></span>
+            <div style="flex: 1;">
+              <strong>${e.status}</strong>
+              ${e.transaction_reference ? ` · ref <code>${e.transaction_reference}</code>` : ''}
+              <div style="color: var(--text-dim); font-size: 12px;">
+                ${OrionUI.fmtDate(e.executed_at)}
+              </div>
+              ${e.error_message ? `<div style="color: var(--danger); font-size: 11px;">${escapeHtml(e.error_message)}</div>` : ''}
+            </div>
+            <span class="badge ${cls}">${e.status}</span>`;
+          ul.appendChild(li);
+        }
+      } catch {
+        OrionUI.toast('Could not load executions.', 'error');
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    function authHeaders() {
+      return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
+
+    document.getElementById('pauseBtn').addEventListener('click', async () => {
+      await fetch(`/api/scheduled-transfers/${scheduleId}/pause`, { method: 'POST', headers: authHeaders() });
+      OrionUI.toast('Paused', 'success', 1500);
+      load();
+    });
+
+    document.getElementById('resumeBtn').addEventListener('click', async () => {
+      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/resume`, { method: 'POST', headers: authHeaders() });
+      if (r.ok) {
+        OrionUI.toast('Resumed', 'success', 1500);
+        load();
+      } else {
+        const body = await r.json();
+        OrionUI.toast(body?.detail || 'Could not resume', 'error');
+      }
+    });
+
+    document.getElementById('cancelBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Cancel this schedule?',
+        body: 'It will stop running immediately. Past executions remain in the audit log.',
+        confirmLabel: 'Cancel schedule',
+        danger: true,
+      });
+      if (!ok) return;
+      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/cancel`, { method: 'POST', headers: authHeaders() });
+      if (r.status === 204) {
+        OrionUI.toast('Schedule cancelled', 'success', 2000);
+        setTimeout(() => { window.location.href = '/scheduled-transfers'; }, 1000);
+      }
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

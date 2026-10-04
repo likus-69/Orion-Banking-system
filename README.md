@@ -28,9 +28,11 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Statement PDF export** (reportlab-generated on the backend)
 - **Toast notifications**, loading skeletons, empty states, optimistic UI updates, accessibility (ARIA, keyboard nav)
 - **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
+- **Scheduled transfers** — one-time, daily, weekly, monthly recurring transfers with auto-retry, failure threshold, pause/resume/cancel, execution audit trail
+- **Webhooks** — per-user subscriptions with HMAC-SHA256 signed payloads + retry policy + delivery history
 
 ### Testing
-- 98 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, and 2FA
+- 114 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, 2FA, and scheduled transfers
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -231,6 +233,48 @@ TOTP secrets are encrypted at rest using Fernet (symmetric encryption from the `
 
 ---
 
+## ⏰ Scheduled Transfers
+
+Automate recurring money movement — rent, salary splits, savings, etc. Schedules fire automatically every 60 seconds via APScheduler.
+
+### Schedule types
+
+| Type | `schedule_config` | Example |
+|------|---------------------|---------|
+| `once` | ISO datetime (UTC) | `"2024-10-15T09:00:00Z"` — fires once at that time |
+| `daily` | Integer N (days) | `"7"` — every 7 days at midnight |
+| `weekly` | Day of week 0-6 (0=Mon) | `"0"` — every Monday at midnight |
+| `monthly` | Day of month 1-28 | `"1"` — 1st of every month at midnight |
+
+### API endpoints (all under `/api/scheduled-transfers`, all auth-required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `` | List your schedules |
+| `POST` | `` | Create a schedule |
+| `GET`  | `/{id}` | Get one |
+| `PATCH`| `/{id}` | Update name/memo/amount |
+| `POST` | `/{id}/pause` | Pause an active schedule |
+| `POST` | `/{id}/resume` | Resume a paused/failed schedule |
+| `POST` | `/{id}/cancel` | Permanently cancel |
+| `GET`  | `/{id}/executions` | Last 50 execution attempts |
+
+### Execution behavior
+
+- **Scheduler runs every 60s** (APScheduler BackgroundScheduler started in app lifespan)
+- Each execution calls `TransactionService.transfer()` directly — gets all the existing concurrency-safety (SELECT FOR UPDATE, idempotency keys, audit logs, webhook triggers)
+- **Idempotency key**: `sched-{id}-{next_run_at_timestamp}` — safe even if scheduler runs twice
+- **Failure handling**: expected failures (insufficient funds, bad recipient) advance the next_run + record a failed execution. After **3 consecutive failures**, the schedule is auto-marked `failed`.
+- **One-time schedules** are marked `completed` after a successful run (or `failed` if it can't execute).
+- **Webhook events**: `scheduled_transfer.executed` and `scheduled_transfer.failed` fire on each outcome.
+
+### UI
+
+- `/scheduled-transfers` page with create wizard (name + recipient + amount + schedule type + per-type config) and list of your schedules with status badges + next-run times
+- `/scheduled-transfers/{id}` detail page with full config, execution history, and pause/resume/cancel buttons
+
+---
+
 ## 🔔 Webhooks
 
 Users can register webhook URLs to receive event notifications when money moves through their account (or when their KYC status changes). Each delivery is HMAC-SHA256-signed and persisted for audit.
@@ -343,7 +387,9 @@ uvicorn app.main:app
 - ~~Email notifications (SMTP integration)~~ ✅ Done
 - ~~Webhooks for transaction events~~ ✅ Done
 - ~~Two-factor authentication (TOTP)~~ ✅ Done
-- Scheduled / recurring transfers (background task queue)
+- ~~Scheduled / recurring transfers (background task queue)~~ ✅ Done
+
+All major roadmap items from the original overhaul are now complete. 🎉
 
 ---
 

@@ -53,6 +53,8 @@ class WebhookEvents:
     TRANSACTION_TRANSFER_OUT = "transaction.transfer.out"
     KYC_APPROVED = "kyc.approved"
     KYC_REJECTED = "kyc.rejected"
+    SCHEDULED_TRANSFER_EXECUTED = "scheduled_transfer.executed"
+    SCHEDULED_TRANSFER_FAILED = "scheduled_transfer.failed"
 
     ALL = [
         TRANSACTION_DEPOSIT,
@@ -61,6 +63,8 @@ class WebhookEvents:
         TRANSACTION_TRANSFER_OUT,
         KYC_APPROVED,
         KYC_REJECTED,
+        SCHEDULED_TRANSFER_EXECUTED,
+        SCHEDULED_TRANSFER_FAILED,
     ]
 
 

@@ -22,6 +22,12 @@ from app.schemas.transaction import (
     TransferRequest,
     WithdrawRequest,
 )
+from app.schemas.scheduled_transfer import (
+    ScheduledTransferCreateRequest,
+    ScheduledTransferExecutionOut,
+    ScheduledTransferOut,
+    ScheduledTransferUpdateRequest,
+)
 from app.schemas.user import (
     KYCUpdateRequest,
     NotificationPreferences,
@@ -51,6 +57,10 @@ __all__ = [
     "NotificationPreferencesUpdate",
     "RefreshRequest",
     "RegisterRequest",
+    "ScheduledTransferCreateRequest",
+    "ScheduledTransferExecutionOut",
+    "ScheduledTransferOut",
+    "ScheduledTransferUpdateRequest",
     "StatementRequest",
     "TokenPair",
     "TransactionOut",
