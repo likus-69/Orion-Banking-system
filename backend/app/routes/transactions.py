@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.transaction import DepositRequest, TransactionOut, TransferRequest, WithdrawRequest
 from app.services.email_service import EmailService
 from app.services.transaction_service import TransactionService
+from app.services.webhook_service import WebhookEvents, WebhookService
 
 
 def _serialize(tx, user_id: int) -> TransactionOut:
@@ -56,6 +57,18 @@ def deposit(
         memo=tx.memo,
         new_balance=f"${float(current_user.balance):,.2f}",
     )
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.TRANSACTION_DEPOSIT,
+        user_id=current_user.id,
+        data={
+            "transaction_id": tx.id,
+            "reference": tx.reference,
+            "amount": float(tx.amount),
+            "memo": tx.memo,
+            "new_balance": float(current_user.balance),
+            "created_at": tx.created_at.isoformat(),
+        },
+    )
     return _serialize(tx, current_user.id)
 
 
@@ -76,6 +89,18 @@ def withdraw(
         reference=tx.reference,
         memo=tx.memo,
         new_balance=f"${float(current_user.balance):,.2f}",
+    )
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.TRANSACTION_WITHDRAWAL,
+        user_id=current_user.id,
+        data={
+            "transaction_id": tx.id,
+            "reference": tx.reference,
+            "amount": float(tx.amount),
+            "memo": tx.memo,
+            "new_balance": float(current_user.balance),
+            "created_at": tx.created_at.isoformat(),
+        },
     )
     return _serialize(tx, current_user.id)
 
@@ -98,7 +123,6 @@ def transfer(
         idempotency_key=payload.idempotency_key,
         **meta,
     )
-    # Sender confirmation email
     recipient = tx.receiver
     EmailService(db, background_tasks=background_tasks).send_transfer_outgoing(
         current_user,
@@ -109,7 +133,6 @@ def transfer(
         memo=tx.memo,
         new_balance=f"${float(current_user.balance):,.2f}",
     )
-    # Recipient notification email
     EmailService(db, background_tasks=background_tasks).send_transfer_incoming(
         recipient,
         amount=f"${float(tx.amount):,.2f}",
@@ -118,6 +141,36 @@ def transfer(
         sender_account=current_user.account_number,
         memo=tx.memo,
         new_balance=f"${float(recipient.balance):,.2f}",
+    )
+    # Sender webhook
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.TRANSACTION_TRANSFER_OUT,
+        user_id=current_user.id,
+        data={
+            "transaction_id": tx.id,
+            "reference": tx.reference,
+            "amount": float(tx.amount),
+            "memo": tx.memo,
+            "recipient_name": recipient.full_name,
+            "recipient_account": recipient.account_number,
+            "new_balance": float(current_user.balance),
+            "created_at": tx.created_at.isoformat(),
+        },
+    )
+    # Recipient webhook
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.TRANSACTION_TRANSFER_IN,
+        user_id=recipient.id,
+        data={
+            "transaction_id": tx.id,
+            "reference": tx.reference,
+            "amount": float(tx.amount),
+            "memo": tx.memo,
+            "sender_name": current_user.full_name,
+            "sender_account": current_user.account_number,
+            "new_balance": float(recipient.balance),
+            "created_at": tx.created_at.isoformat(),
+        },
     )
     return _serialize(tx, current_user.id)
 

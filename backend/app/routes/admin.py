@@ -18,6 +18,7 @@ from app.schemas.admin import (
 )
 from app.services.admin_service import AdminService
 from app.services.email_service import EmailService
+from app.services.webhook_service import WebhookEvents, WebhookService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_admin_user)])
 
@@ -92,6 +93,16 @@ def approve_kyc(
     EmailService(db, background_tasks=background_tasks).send_kyc_approved(
         target, reviewed_by=admin.full_name,
     )
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.KYC_APPROVED,
+        user_id=target.id,
+        data={
+            "user_id": target.id,
+            "account_number": target.account_number,
+            "reviewed_by": admin.full_name,
+            "reviewed_at": target.kyc_reviewed_at.isoformat() if target.kyc_reviewed_at else None,
+        },
+    )
     return target
 
 
@@ -107,5 +118,16 @@ def reject_kyc(
     target = service.reject_kyc(admin, user_id, reason=payload.reason)
     EmailService(db, background_tasks=background_tasks).send_kyc_rejected(
         target, reason=payload.reason, reviewed_by=admin.full_name,
+    )
+    WebhookService(db, background_tasks=background_tasks).dispatch(
+        WebhookEvents.KYC_REJECTED,
+        user_id=target.id,
+        data={
+            "user_id": target.id,
+            "account_number": target.account_number,
+            "reason": payload.reason,
+            "reviewed_by": admin.full_name,
+            "reviewed_at": target.kyc_reviewed_at.isoformat() if target.kyc_reviewed_at else None,
+        },
     )
     return target

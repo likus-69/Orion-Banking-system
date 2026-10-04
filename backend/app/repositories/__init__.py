@@ -6,6 +6,7 @@ from app.repositories.base import BaseRepository
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.transaction_repo import TransactionRepository
 from app.repositories.user_repo import UserRepository
+from app.repositories.webhook_repo import WebhookRepository
 
 __all__ = [
     "AuditLogRepository",
@@ -13,4 +14,5 @@ __all__ = [
     "NotificationRepository",
     "TransactionRepository",
     "UserRepository",
+    "WebhookRepository",
 ]

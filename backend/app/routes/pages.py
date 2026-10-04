@@ -117,3 +117,19 @@ def admin_users_page(request: Request):
     return request.app.state.templates.TemplateResponse(
         "admin/users.html", _ctx(request, page="admin_users")
     )
+
+
+# ── Webhooks management ──────────────────────────────────────────
+@router.get("/webhooks", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def webhooks_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "webhooks/index.html", _ctx(request, page="webhooks")
+    )
+
+
+@router.get("/webhooks/{webhook_id}", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def webhook_detail_page(request: Request, webhook_id: int):
+    return request.app.state.templates.TemplateResponse(
+        "webhooks/detail.html",
+        _ctx(request, page="webhook_detail", webhook_id=webhook_id),
+    )

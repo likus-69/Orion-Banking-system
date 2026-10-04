@@ -29,6 +29,13 @@ from app.schemas.user import (
     UserOut,
     UserUpdateRequest,
 )
+from app.schemas.webhook import (
+    WebhookCreateRequest,
+    WebhookDeliveryOut,
+    WebhookEventTypeInfo,
+    WebhookOut,
+    WebhookUpdateRequest,
+)
 
 __all__ = [
     "AdminStatsOut",
@@ -50,5 +57,10 @@ __all__ = [
     "TransferRequest",
     "UserOut",
     "UserUpdateRequest",
+    "WebhookCreateRequest",
+    "WebhookDeliveryOut",
+    "WebhookEventTypeInfo",
+    "WebhookOut",
+    "WebhookUpdateRequest",
     "WithdrawRequest",
 ]
