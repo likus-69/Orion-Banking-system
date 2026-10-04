@@ -13,7 +13,7 @@
   <p>Your trusted online secure banking service</p>
 </header>
 
-<div class="card" style="max-width:420px;">
+<div class="card" style="max-width:420px;" id="loginCard">
   <h2>Sign in</h2>
   <p class="sub">Enter your email and PIN to access your account.</p>
 
@@ -34,6 +34,24 @@
     No account yet? <a href="/register"><b>Create one in seconds →</b></a>
   </div>
 </div>
+
+<!-- 2FA challenge card (hidden until login returns needs_totp=true) -->
+<div class="card hidden" style="max-width:420px;" id="totpCard">
+  <h2>Two-factor code</h2>
+  <p class="sub">Enter the 6-digit code from your authenticator app, or use a backup code.</p>
+
+  <form id="totpForm" autocomplete="off" novalidate>
+    <label for="totpCode">TOTP code (or backup code)</label>
+    <input id="totpCode" name="totpCode" type="text" inputmode="numeric"
+           placeholder="123456" maxlength="8" required>
+    <button type="submit" class="btn" id="totpSubmit">Verify</button>
+    <div class="msg" id="totpMsg" role="alert" aria-live="polite"></div>
+  </form>
+
+  <div class="hint">
+    Lost access? Contact support to disable 2FA.
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -42,6 +60,7 @@
     const form = document.getElementById('loginForm');
     const msg = document.getElementById('loginMsg');
     const submit = document.getElementById('loginSubmit');
+    let pendingChallenge = null;
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -57,7 +76,13 @@
       submit.textContent = 'Signing in…';
       try {
         const r = await OrionAPI.login({ email, pin });
-        if (r.ok) {
+        if (r.ok && r.data.needs_totp) {
+          // 2FA challenge — show the TOTP card
+          pendingChallenge = r.data.challenge_token;
+          document.getElementById('loginCard').classList.add('hidden');
+          document.getElementById('totpCard').classList.remove('hidden');
+          document.getElementById('totpCode').focus();
+        } else if (r.ok) {
           OrionUI.toast('Welcome back!', 'success', 2000);
           setTimeout(() => { window.location.href = '/dashboard'; }, 400);
         } else {
@@ -71,6 +96,43 @@
         msg.textContent = 'Network error. Please try again.';
         submit.disabled = false;
         submit.textContent = 'Sign In';
+      }
+    });
+
+    // 2FA verification
+    const totpForm = document.getElementById('totpForm');
+    const totpMsg = document.getElementById('totpMsg');
+    const totpSubmit = document.getElementById('totpSubmit');
+
+    totpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      totpMsg.className = 'msg';
+      const value = document.getElementById('totpCode').value.trim();
+      if (!value) {
+        totpMsg.className = 'msg err show';
+        totpMsg.textContent = 'Enter your TOTP code or backup code.';
+        return;
+      }
+      totpSubmit.disabled = true;
+      totpSubmit.textContent = 'Verifying…';
+      try {
+        // 6-digit → TOTP code; 8-char → backup code
+        const payload = value.length === 6 ? { code: value } : { backup_code: value };
+        const r = await OrionAPI.verifyTotp(pendingChallenge, payload);
+        if (r && r.access_token) {
+          OrionUI.toast('Welcome back!', 'success', 2000);
+          setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+        } else {
+          totpMsg.className = 'msg err show';
+          totpMsg.textContent = r?.error?.message || 'Invalid code.';
+          totpSubmit.disabled = false;
+          totpSubmit.textContent = 'Verify';
+        }
+      } catch (err) {
+        totpMsg.className = 'msg err show';
+        totpMsg.textContent = 'Network error.';
+        totpSubmit.disabled = false;
+        totpSubmit.textContent = 'Verify';
       }
     });
   })();

@@ -10,7 +10,7 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 
 ### Backend
 - **Layered architecture**: routes → services → repositories → models
-- **Auth**: bcrypt-hashed PINs, JWT access + refresh token pair, single-use refresh rotation, weak-PIN rejection, login lockout after 5 failures, timing-attack safe login
+- **Auth**: bcrypt-hashed PINs, JWT access + refresh token pair, single-use refresh rotation, weak-PIN rejection, login lockout after 5 failures, timing-attack safe login, **two-factor authentication (TOTP) with encrypted-at-rest secrets + single-use backup codes**
 - **Concurrency-safe money movement**: `SELECT FOR UPDATE` row locks on transfers/withdrawals/deposits, deterministic lock ordering to avoid deadlocks, idempotency keys for transfers
 - **New features**: KYC fields, transaction categories/types/statuses, in-app notifications, statement PDF export, request-ID middleware, IP/User-Agent audit logging, **transactional email notifications**
 - **Hardening**: CORS allowlist, rate limiting (slowapi), structured logging (structlog), GZip middleware, consistent JSON error shape with request IDs
@@ -28,9 +28,12 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Statement PDF export** (reportlab-generated on the backend)
 - **Toast notifications**, loading skeletons, empty states, optimistic UI updates, accessibility (ARIA, keyboard nav)
 - **Admin panel** (`/admin/*`) with role-based access — dashboard stats, KYC review queue, user management with search/filter
+- **Beneficiaries** — saved recipients with category, nickname, typeahead search in transfer forms, opportunistic auto-save after one-time transfers
+- **Scheduled transfers** — one-time, daily, weekly, monthly recurring transfers with auto-retry, failure threshold, pause/resume/cancel, execution audit trail
+- **Webhooks** — per-user subscriptions with HMAC-SHA256 signed payloads + retry policy + delivery history
 
 ### Testing
-- 76 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, and webhooks
+- 150 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, 2FA, scheduled transfers, beneficiaries, and the audit log viewer
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
@@ -189,6 +192,124 @@ For testing, set `EMAIL_BACKEND=memory` — sent emails are captured in-process 
 
 ---
 
+## 🔐 Two-Factor Authentication (TOTP)
+
+Users can opt into 2FA via a standard TOTP authenticator app (Google Authenticator, 1Password, Authy, etc.).
+
+### Setup flow
+
+1. **`POST /api/2fa/setup`** — generates an encrypted TOTP secret + QR PNG (base64-encoded)
+2. User scans the QR with their authenticator app
+3. **`POST /api/2fa/verify`** — submits the first 6-digit code; on success, enables 2FA + returns 10 single-use backup codes (shown once)
+4. **`POST /api/2fa/status`** — query enabled state + backup codes remaining
+
+### Login flow with 2FA
+
+1. **`POST /api/auth/login`** — if 2FA enabled, returns `{ needs_totp: true, challenge_token: "..." }` instead of access tokens
+2. **`POST /api/auth/verify-totp`** — exchanges `challenge_token` + 6-digit TOTP code (or 8-char backup code) for real access + refresh tokens
+3. Challenge token expires in 10 minutes
+
+### Backup codes
+
+- 10 codes generated at setup, 8 chars each (alphanumeric, no ambiguous chars like `0`/`O`/`1`/`I`)
+- Stored as bcrypt hashes — DB leak doesn't compromise them
+- Single-use — consumed on login
+- **`POST /api/2fa/regenerate-backup-codes`** — invalidates old codes, returns 10 new ones (requires current code or backup code as auth)
+
+### Disable
+
+- **`POST /api/2fa/disable`** — requires current TOTP code or backup code as authorization
+- **`POST /api/admin/users/{id}/disable-2fa`** — admin force-disable (for locked-out users)
+
+### Secret encryption
+
+TOTP secrets are encrypted at rest using Fernet (symmetric encryption from the `cryptography` library). The encryption key is derived from `SECRET_KEY` via SHA-256. This means:
+- DB leak alone doesn't expose 2FA secrets
+- If `SECRET_KEY` changes, encrypted secrets become undecryptable (users must reset 2FA)
+
+### UI
+
+- Settings page has a "Two-factor authentication" section showing status + backup codes remaining + Enable/Disable/Regenerate buttons
+- Login page shows a TOTP code input card when `needs_totp=true` is returned
+
+---
+
+## ⏰ Scheduled Transfers
+
+Automate recurring money movement — rent, salary splits, savings, etc. Schedules fire automatically every 60 seconds via APScheduler.
+
+### Schedule types
+
+| Type | `schedule_config` | Example |
+|------|---------------------|---------|
+| `once` | ISO datetime (UTC) | `"2024-10-15T09:00:00Z"` — fires once at that time |
+| `daily` | Integer N (days) | `"7"` — every 7 days at midnight |
+| `weekly` | Day of week 0-6 (0=Mon) | `"0"` — every Monday at midnight |
+| `monthly` | Day of month 1-28 | `"1"` — 1st of every month at midnight |
+
+### API endpoints (all under `/api/scheduled-transfers`, all auth-required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `` | List your schedules |
+| `POST` | `` | Create a schedule |
+| `GET`  | `/{id}` | Get one |
+| `PATCH`| `/{id}` | Update name/memo/amount |
+| `POST` | `/{id}/pause` | Pause an active schedule |
+| `POST` | `/{id}/resume` | Resume a paused/failed schedule |
+| `POST` | `/{id}/cancel` | Permanently cancel |
+| `GET`  | `/{id}/executions` | Last 50 execution attempts |
+
+### Execution behavior
+
+- **Scheduler runs every 60s** (APScheduler BackgroundScheduler started in app lifespan)
+- Each execution calls `TransactionService.transfer()` directly — gets all the existing concurrency-safety (SELECT FOR UPDATE, idempotency keys, audit logs, webhook triggers)
+- **Idempotency key**: `sched-{id}-{next_run_at_timestamp}` — safe even if scheduler runs twice
+- **Failure handling**: expected failures (insufficient funds, bad recipient) advance the next_run + record a failed execution. After **3 consecutive failures**, the schedule is auto-marked `failed`.
+- **One-time schedules** are marked `completed` after a successful run (or `failed` if it can't execute).
+- **Webhook events**: `scheduled_transfer.executed` and `scheduled_transfer.failed` fire on each outcome.
+
+### UI
+
+- `/scheduled-transfers` page with create wizard (name + recipient + amount + schedule type + per-type config) and list of your schedules with status badges + next-run times
+- `/scheduled-transfers/{id}` detail page with full config, execution history, and pause/resume/cancel buttons
+
+---
+
+## 👥 Beneficiaries
+
+Save recipients you transfer to often — type the first few letters of their name or account number in any transfer form to get a quick typeahead dropdown.
+
+### Features
+
+- **Validation on save**: recipient account number must exist in the system (prevents typos)
+- **No duplicates**: a user can only save a given recipient once
+- **Categories**: family, friend, business, utility, other (color-coded in UI)
+- **Nicknames**: optional alias for easier search
+- **Cap**: 50 beneficiaries per user (reasonable limit)
+- **Typeahead search**: in transfer + scheduled-transfer forms, start typing account number, recipient name, or nickname — matching beneficiaries appear as a dropdown
+- **Auto-save prompt**: after a successful one-time transfer to a non-saved recipient, a toast offers "Save as beneficiary?"
+
+### API endpoints (all under `/api/beneficiaries`, all auth-required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `` | List your beneficiaries |
+| `POST` | `` | Create (validates recipient exists + not self + not already saved) |
+| `GET`  | `/search?q=...` | Typeahead search (max 10 results) |
+| `GET`  | `/{id}` | Get one |
+| `PATCH`| `/{id}` | Update nickname + category |
+| `DELETE` | `/{id}` | Delete |
+| `POST` | `/save-from-transfer` | Opportunistic save — returns existing if already saved |
+
+### UI
+
+- `/beneficiaries` page with create form + searchable list + edit + delete + "Transfer →" shortcut
+- Transfer form has a typeahead dropdown that appears as you type the recipient account number
+- Scheduled-transfer form has the same typeahead
+
+---
+
 ## 🔔 Webhooks
 
 Users can register webhook URLs to receive event notifications when money moves through their account (or when their KYC status changes). Each delivery is HMAC-SHA256-signed and persisted for audit.
@@ -300,8 +421,10 @@ uvicorn app.main:app
 
 - ~~Email notifications (SMTP integration)~~ ✅ Done
 - ~~Webhooks for transaction events~~ ✅ Done
-- Scheduled / recurring transfers (background task queue)
-- Two-factor authentication (TOTP)
+- ~~Two-factor authentication (TOTP)~~ ✅ Done
+- ~~Scheduled / recurring transfers (background task queue)~~ ✅ Done
+
+All major roadmap items from the original overhaul are now complete. 🎉
 
 ---
 

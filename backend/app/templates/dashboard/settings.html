@@ -6,8 +6,10 @@
   <button onclick="window.location.href='/deposit'">Deposit</button>
   <button onclick="window.location.href='/transactions'">Transactions</button>
   <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/beneficiaries'">Beneficiaries</button>
   <button class="active" aria-current="page">Settings</button>
   <button onclick="window.location.href='/profile'">Profile</button>
+  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
   <button onclick="window.location.href='/webhooks'">Webhooks</button>
   <button class="danger" data-action="logout">Log out</button>
 {% endblock %}
@@ -86,6 +88,24 @@
       <button type="submit" class="btn">Save email preferences</button>
       <div class="msg" id="emailPrefsMsg" role="alert" aria-live="polite"></div>
     </form>
+  </div>
+
+  <!-- Two-factor authentication -->
+  <div class="section-card" id="twofaCard">
+    <h3>Two-factor authentication (2FA)</h3>
+    <p class="sub">Add an extra layer of security with a TOTP code from your authenticator app.</p>
+    <div class="list-row">
+      <div class="info">
+        <span>Status</span>
+        <div class="acc" id="twofaStatus">Loading…</div>
+      </div>
+      <div class="actions">
+        <button class="btn ghost icon" id="twofaSetupBtn" style="width:auto;">Enable 2FA</button>
+        <button class="btn ghost icon" id="twofaDisableBtn" style="width:auto; display:none; border-color: var(--danger); color: var(--danger);">Disable 2FA</button>
+        <button class="btn ghost icon" id="twofaRegenBtn" style="width:auto; display:none;">Regenerate backup codes</button>
+      </div>
+    </div>
+    <div class="msg" id="twofaMsg" role="alert" aria-live="polite"></div>
   </div>
 
   <!-- Danger zone -->
@@ -246,6 +266,153 @@
     loadProfile();
     loadNotifications();
     loadEmailPrefs();
+    loadTwofaStatus();
+
+    // ── Two-factor authentication ──────────────────────────────
+    async function loadTwofaStatus() {
+      try {
+        const s = await OrionAPI.totpStatus();
+        const statusEl = document.getElementById('twofaStatus');
+        const setupBtn = document.getElementById('twofaSetupBtn');
+        const disableBtn = document.getElementById('twofaDisableBtn');
+        const regenBtn = document.getElementById('twofaRegenBtn');
+        if (s.enabled) {
+          statusEl.innerHTML = `<span class="badge success">2FA enabled</span> · ${s.backup_codes_remaining} backup codes remaining · set up ${OrionUI.fmtDateShort(s.setup_at)}`;
+          setupBtn.style.display = 'none';
+          disableBtn.style.display = 'inline-block';
+          regenBtn.style.display = 'inline-block';
+        } else {
+          statusEl.innerHTML = `<span class="badge">2FA disabled</span> · login requires email + PIN only`;
+          setupBtn.style.display = 'inline-block';
+          disableBtn.style.display = 'none';
+          regenBtn.style.display = 'none';
+        }
+      } catch {}
+    }
+
+    document.getElementById('twofaSetupBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Enable 2FA?',
+        body: 'You\\'ll need an authenticator app like Google Authenticator, 1Password, or Authy. We\\'ll show you a QR code to scan.',
+        confirmLabel: 'Get QR code',
+      });
+      if (!ok) return;
+      const setup = await OrionAPI.totpSetup();
+      // Show QR + secret + ask user to enter a code from their app
+      const modal = document.createElement('div');
+      modal.className = 'modal-backdrop';
+      modal.innerHTML = `
+        <div class="modal" style="max-width: 520px;">
+          <h3>Set up 2FA</h3>
+          <p style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Scan this QR with your authenticator app, then enter the 6-digit code it generates.</p>
+          <img src="data:image/png;base64,${setup.qr_png_base64}" alt="2FA QR code" style="display:block;margin:0 auto 16px;width:200px;height:200px;background:white;padding:8px;border-radius:8px;" />
+          <p style="font-size: 12px; color: var(--text-dim); margin: 0 0 8px;">Or enter this secret manually:</p>
+          <code style="display:block;background:var(--bg-input);padding:8px;border-radius:6px;font-size:12px;margin-bottom:16px;word-break:break-all;">${setup.secret}</code>
+          <label style="margin: 0 0 6px;">6-digit code from your app</label>
+          <input id="totpVerifyCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" style="margin-bottom: 12px;">
+          <div class="msg" id="totpVerifyMsg"></div>
+          <div class="actions">
+            <button class="btn ghost" id="totpCancelBtn">Cancel</button>
+            <button class="btn" id="totpConfirmBtn">Verify & enable</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+
+      const verifyMsg = modal.querySelector('#totpVerifyMsg');
+      modal.querySelector('#totpCancelBtn').addEventListener('click', () => modal.remove());
+      modal.querySelector('#totpConfirmBtn').addEventListener('click', async () => {
+        const code = modal.querySelector('#totpVerifyCode').value.trim();
+        if (code.length !== 6) {
+          verifyMsg.className = 'msg err show';
+          verifyMsg.textContent = 'Code must be 6 digits.';
+          return;
+        }
+        const r = await OrionAPI.totpVerifySetup(code);
+        if (r && r.enabled) {
+          modal.remove();
+          // Show backup codes
+          const codesModal = document.createElement('div');
+          codesModal.className = 'modal-backdrop';
+          codesModal.innerHTML = `
+            <div class="modal" style="max-width: 460px;">
+              <h3>2FA enabled — save your backup codes</h3>
+              <p style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">These 10 codes are <strong>shown only once</strong>. Each can be used to log in if you lose your authenticator. Store them somewhere safe.</p>
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; font-family: var(--font-mono); font-size: 14px; background: var(--bg-input); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                ${r.backup_codes.map((c) => `<div>${c}</div>`).join('')}
+              </div>
+              <div class="actions">
+                <button class="btn" id="backupCodesCloseBtn">I've saved them</button>
+              </div>
+            </div>`;
+          document.body.appendChild(codesModal);
+          codesModal.querySelector('#backupCodesCloseBtn').addEventListener('click', () => codesModal.remove());
+          loadTwofaStatus();
+        } else {
+          verifyMsg.className = 'msg err show';
+          verifyMsg.textContent = r?.error?.message || 'Invalid code.';
+        }
+      });
+    });
+
+    document.getElementById('twofaDisableBtn').addEventListener('click', async () => {
+      const code = prompt('Enter a current TOTP code (6 digits) OR a backup code (8 chars) to disable 2FA:');
+      if (!code) return;
+      const is6 = code.length === 6;
+      const is8 = code.length === 8;
+      const payload = is6 ? { code } : (is8 ? { backup_code: code } : {});
+      const r = await fetch('/api/2fa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` },
+        body: JSON.stringify(payload),
+      });
+      if (r.status === 204) {
+        OrionUI.toast('2FA disabled', 'success', 2000);
+        loadTwofaStatus();
+      } else {
+        const body = await r.json();
+        OrionUI.toast(body?.error?.message || 'Could not disable 2FA.', 'error');
+      }
+    });
+
+    document.getElementById('twofaRegenBtn').addEventListener('click', async () => {
+      const ok = await OrionUI.confirmModal({
+        title: 'Regenerate backup codes?',
+        body: 'This invalidates all existing backup codes. You\\'ll need to verify with a current TOTP code or backup code.',
+        confirmLabel: 'Continue',
+      });
+      if (!ok) return;
+      const code = prompt('Enter a current TOTP code (6 digits) OR a backup code (8 chars):');
+      if (!code) return;
+      const is6 = code.length === 6;
+      const is8 = code.length === 8;
+      const payload = is6 ? { code } : (is8 ? { backup_code: code } : {});
+      const r = await fetch('/api/2fa/regenerate-backup-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json());
+      if (r && r.backup_codes) {
+        // Show new backup codes
+        const modal = document.createElement('div');
+        modal.className = 'modal-backdrop';
+        modal.innerHTML = `
+          <div class="modal" style="max-width: 460px;">
+            <h3>New backup codes</h3>
+            <p style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Old codes are now invalid. Save these 10 new codes somewhere safe.</p>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; font-family: var(--font-mono); font-size: 14px; background: var(--bg-input); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+              ${r.backup_codes.map((c) => `<div>${c}</div>`).join('')}
+            </div>
+            <div class="actions">
+              <button class="btn" id="regenCloseBtn">Done</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('#regenCloseBtn').addEventListener('click', () => modal.remove());
+        loadTwofaStatus();
+      } else {
+        OrionUI.toast(r?.error?.message || 'Could not regenerate backup codes.', 'error');
+      }
+    });
   })();
 </script>
 {% endblock %}

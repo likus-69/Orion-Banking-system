@@ -12,6 +12,125 @@
   <link rel="stylesheet" href="/static/css/tokens.css">
   <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/components.css">
+  <style>
+    /* Notifications bell + dropdown (only loaded on authenticated pages) */
+    .notif-bell {
+      position: relative;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      border-radius: var(--radius-full);
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      transition: var(--transition-fast);
+      margin-left: var(--space-2);
+    }
+    .notif-bell:hover { color: var(--accent); border-color: var(--accent); }
+    .notif-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      background: var(--danger);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 999px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .notif-badge.show { display: inline-flex; }
+    .notif-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 360px;
+      max-height: 480px;
+      overflow-y: auto;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-card);
+      z-index: 50;
+      display: none;
+      padding: 4px;
+    }
+    .notif-dropdown.show { display: block; }
+    .notif-dropdown .notif-header {
+      padding: 12px 14px 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .notif-dropdown .notif-item {
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: var(--transition-fast);
+      border-left: 3px solid transparent;
+    }
+    .notif-dropdown .notif-item:hover { background: var(--bg-input); }
+    .notif-dropdown .notif-item.unread { border-left-color: var(--accent); }
+    .notif-dropdown .notif-item .notif-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .notif-dropdown .notif-item .notif-body {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .notif-dropdown .notif-item .notif-time {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      margin-top: 4px;
+    }
+    .notif-dropdown .notif-empty {
+      padding: 28px 14px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+    .notif-dropdown .notif-footer {
+      padding: 8px 14px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+    }
+    .notif-dropdown .notif-footer a {
+      color: var(--info);
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .notif-dropdown .notif-footer a:hover { text-decoration: underline; }
+    .notif-dropdown .notif-footer button {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+    }
+    .notif-dropdown .notif-footer button:hover { color: var(--text); background: var(--bg-input); }
+  </style>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -19,9 +138,24 @@
 
   <nav class="topnav" role="navigation">
     <div class="mark">◇ Orion Banking Inc.</div>
-    <div class="links">
+    <div class="links" style="position: relative;">
       {% block nav_links %}{% endblock %}
       <button class="theme-toggle" aria-label="Toggle dark/light theme"></button>
+      <button class="notif-bell" id="notifBell" aria-label="Notifications" style="display: none;" title="Notifications">
+        ◔
+        <span class="notif-badge" id="notifBadge">0</span>
+        <div class="notif-dropdown" id="notifDropdown">
+          <div class="notif-header">
+            <span>Notifications</span>
+            <button id="notifMarkAllRead" style="background:none;border:none;color:var(--info);font-size:11px;cursor:pointer;padding:2px 6px;">Mark all read</button>
+          </div>
+          <div id="notifListContainer"></div>
+          <div class="notif-footer">
+            <a href="/notifications">View all →</a>
+            <span id="notifUnreadFooter" style="color:var(--text-dim);font-size:11px;"></span>
+          </div>
+        </div>
+      </button>
     </div>
   </nav>
 
@@ -36,6 +170,123 @@
 
   <script src="/static/js/api.js"></script>
   <script src="/static/js/ui.js"></script>
+  <script>
+    // ── Notifications bell + dropdown (initialized on every authenticated page) ──
+    (function () {
+      function authHeaders() {
+        const token = localStorage.getItem('orion_access_token');
+        return token ? { Authorization: `Bearer ${token}` } : {};
+      }
+
+      const bell = document.getElementById('notifBell');
+      const badge = document.getElementById('notifBadge');
+      const dropdown = document.getElementById('notifDropdown');
+      const listContainer = document.getElementById('notifListContainer');
+      const markAllBtn = document.getElementById('notifMarkAllRead');
+      const unreadFooter = document.getElementById('notifUnreadFooter');
+
+      // Only run on authenticated pages (token present)
+      if (!localStorage.getItem('orion_access_token')) {
+        return;
+      }
+      bell.style.display = 'inline-flex';
+
+      let pollTimer = null;
+
+      async function fetchUnreadCount() {
+        try {
+          const r = await fetch('/api/notifications/unread-count', { headers: authHeaders() });
+          if (!r.ok) return;
+          const body = await r.json();
+          const count = body.unread_count || 0;
+          if (count > 0) {
+            badge.textContent = count > 99 ? '99+' : String(count);
+            badge.classList.add('show');
+          } else {
+            badge.classList.remove('show');
+          }
+        } catch {}
+      }
+
+      function fmtRelative(iso) {
+        const d = new Date(iso);
+        const now = new Date();
+        const sec = Math.floor((now - d) / 1000);
+        if (sec < 60) return 'just now';
+        if (sec < 3600) return Math.floor(sec / 60) + 'm ago';
+        if (sec < 86400) return Math.floor(sec / 3600) + 'h ago';
+        if (sec < 604800) return Math.floor(sec / 86400) + 'd ago';
+        return d.toLocaleDateString();
+      }
+
+      async function fetchRecent() {
+        try {
+          const list = await fetch('/api/notifications?unread_only=false', { headers: authHeaders() }).then((r) => r.json());
+          listContainer.innerHTML = '';
+          if (list.length === 0) {
+            listContainer.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+            unreadFooter.textContent = '';
+            return;
+          }
+          const top = list.slice(0, 8);
+          const unread = list.filter((n) => !n.is_read).length;
+          unreadFooter.textContent = unread > 0 ? `${unread} unread` : 'All read';
+          for (const n of top) {
+            const item = document.createElement('div');
+            item.className = 'notif-item' + (n.is_read ? '' : ' unread');
+            item.innerHTML = `
+              <div class="notif-title">${escapeHtml(n.title)}</div>
+              ${n.body ? `<div class="notif-body">${escapeHtml(n.body)}</div>` : ''}
+              <div class="notif-time">${fmtRelative(n.created_at)}</div>
+            `;
+            item.addEventListener('click', async () => {
+              if (!n.is_read) {
+                await fetch(`/api/notifications/${n.id}/read`, { method: 'POST', headers: authHeaders() });
+                fetchUnreadCount();
+                fetchRecent();
+              }
+              // Navigate to /notifications for full context (or related page)
+              window.location.href = '/notifications';
+            });
+            listContainer.appendChild(item);
+          }
+        } catch {}
+      }
+
+      function escapeHtml(s) {
+        const d = document.createElement('div');
+        d.textContent = s || '';
+        return d.innerHTML;
+      }
+
+      // Toggle dropdown on bell click
+      bell.addEventListener('click', (e) => {
+        if (e.target.closest('.notif-dropdown')) return;  // clicks inside don't toggle
+        dropdown.classList.toggle('show');
+        if (dropdown.classList.contains('show')) {
+          fetchRecent();
+        }
+      });
+
+      // Close on outside click
+      document.addEventListener('click', (e) => {
+        if (!bell.contains(e.target)) {
+          dropdown.classList.remove('show');
+        }
+      });
+
+      markAllBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await fetch('/api/notifications/read-all', { method: 'POST', headers: authHeaders() });
+        fetchUnreadCount();
+        fetchRecent();
+      });
+
+      // Initial fetch + poll every 30s
+      fetchUnreadCount();
+      pollTimer = setInterval(fetchUnreadCount, 30000);
+    })();
+  </script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

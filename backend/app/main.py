@@ -24,7 +24,11 @@ from app.database import Base, engine
 from app.exceptions import OrionError
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestIdMiddleware
-from app.routes import accounts, admin, auth, notifications, pages, statements, transactions, webhooks
+from app.routes import (
+    accounts, admin, auth, beneficiaries, notifications, pages,
+    scheduled_transfers, statements,
+    totp, transactions, webhooks,
+)
 
 
 # ────────────────────────── Lifespan ──────────────────────────────
@@ -36,7 +40,32 @@ async def lifespan(app: FastAPI):
     # Create tables on first run if using SQLite (dev convenience).
     if settings.database_url.startswith("sqlite"):
         Base.metadata.create_all(bind=engine)
+
+    # Start the scheduled-transfer background scheduler.
+    scheduler = None
+    if settings.env != "test" and not settings.database_url.startswith("sqlite:///./test_"):
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.services.scheduled_transfer_service import ScheduledTransferService
+
+        scheduler = BackgroundScheduler(daemon=True)
+
+        def _run_due():
+            try:
+                ScheduledTransferService(SessionLocal()).run_due()
+            except Exception as exc:
+                log.error("scheduled_transfer.run_due_error", error=str(exc))
+
+        # Every 60s
+        scheduler.add_job(_run_due, "interval", seconds=60, id="run_due_transfers")
+        scheduler.start()
+        log.info("scheduler.started", interval_seconds=60)
+    else:
+        log.info("scheduler.skipped", reason="test env")
+
     yield
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
+        log.info("scheduler.stopped")
     log.info("app.shutdown")
 
 
@@ -124,6 +153,9 @@ app.include_router(statements.router)
 app.include_router(notifications.router)
 app.include_router(admin.router)
 app.include_router(webhooks.router)
+app.include_router(totp.router)
+app.include_router(scheduled_transfers.router)
+app.include_router(beneficiaries.router)
 app.include_router(pages.router)  # Jinja2 HTML routes — last so /api takes precedence
 
 

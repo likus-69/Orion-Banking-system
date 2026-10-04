@@ -20,6 +20,16 @@ class NotificationRepository(BaseRepository[Notification]):
             q = q.filter(Notification.is_read == False)  # noqa: E712
         return q.order_by(Notification.created_at.desc()).limit(50).all()
 
+    def count_unread(self, user_id: int) -> int:
+        return (
+            self._db.query(Notification)
+            .filter(
+                Notification.user_id == user_id,
+                Notification.is_read == False,  # noqa: E712
+            )
+            .count()
+        )
+
     def mark_read(self, notification_id: int, user_id: int) -> bool:
         n = (
             self._db.query(Notification)

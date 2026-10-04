@@ -86,6 +86,15 @@ class User(Base):
     email_on_transfer_out: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_on_kyc_decision: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # ── Two-factor authentication (TOTP) ─────────────────────────
+    # 2FA is opt-in. When totp_enabled=True, login requires an additional
+    # TOTP code after email+PIN. The TOTP secret is encrypted at rest.
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    totp_secret_enc: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    # Comma-separated bcrypt-hashed backup codes (single-use, 10 generated at setup)
+    totp_backup_codes_hashed: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    totp_setup_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow, nullable=False

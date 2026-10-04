@@ -90,6 +90,11 @@
   }
 
   // ── Public API ────────────────────────────────────────────
+  function authHeader() {
+    const token = getAccess();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   const api = {
     // Auth
     register: async (payload) => {
@@ -106,11 +111,43 @@
         body: JSON.stringify(payload),
       });
       const data = await r.json();
-      if (r.ok) {
+      if (r.ok && !data.needs_totp) {
         setTokens(data.access_token, data.refresh_token);
       }
       return { ok: r.ok, status: r.status, data };
     },
+
+    verifyTotp: async (challengeToken, { code, backupCode } = {}) =>
+      request('/api/auth/verify-totp', {
+        method: 'POST',
+        body: JSON.stringify({
+          challenge_token: challengeToken,
+          code: code || null,
+          backup_code: backupCode || null,
+        }),
+      }).then((r) => r.json()),
+
+    // ── 2FA / TOTP ──────────────────────────────────────────────
+    totpStatus: () => fetch('/api/2fa/status', { headers: authHeader() }).then((r) => r.json()),
+    totpSetup: () => fetch('/api/2fa/setup', { method: 'POST', headers: authHeader() }).then((r) => r.json()),
+    totpVerifySetup: (code) =>
+      fetch('/api/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ code }),
+      }).then((r) => r.json()),
+    totpDisable: (code, backupCode) =>
+      fetch('/api/2fa/disable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ code: code || null, backup_code: backupCode || null }),
+      }).then((r) => ({ ok: r.ok, status: r.status })),
+    totpRegenerateBackupCodes: (code, backupCode) =>
+      fetch('/api/2fa/regenerate-backup-codes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify({ code: code || null, backup_code: backupCode || null }),
+      }).then((r) => r.json()),
 
     logout: async () => {
       try {

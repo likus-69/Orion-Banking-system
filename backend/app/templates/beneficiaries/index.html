@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}Beneficiaries — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button class="active" aria-current="page">Beneficiaries</button>
+  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button onclick="window.location.href='/webhooks'">Webhooks</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 960px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Saved recipients</div>
+      <h2>Beneficiaries</h2>
+      <div class="acc">Save people you transfer to often — type the first few letters of their name or account in any transfer form.</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Add beneficiary</h3>
+    <p class="sub">We'll verify the account number exists before saving. You can save up to 50 beneficiaries.</p>
+    <form id="createForm">
+      <div class="row2">
+        <div>
+          <label for="bnAcc">Recipient account number</label>
+          <input id="bnAcc" type="text" inputmode="numeric" maxlength="14" placeholder="14-digit account number" required>
+        </div>
+        <div>
+          <label for="bnNickname">Nickname (optional)</label>
+          <input id="bnNickname" type="text" maxlength="100" placeholder="e.g. Mom, landlord, Alex">
+        </div>
+      </div>
+      <label for="bnCategory">Category</label>
+      <select id="bnCategory">
+        <option value="family">Family</option>
+        <option value="friend">Friend</option>
+        <option value="business">Business</option>
+        <option value="utility">Utility (e.g. rent, electricity)</option>
+        <option value="other" selected>Other</option>
+      </select>
+      <button type="submit" class="btn">Add beneficiary</button>
+      <div class="msg" id="createMsg" role="alert" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <div class="section-card">
+    <h3>Saved beneficiaries</h3>
+    <p class="sub" id="listMeta">—</p>
+    <input id="searchInput" type="text" placeholder="Search by name, nickname, or account number…" style="margin-bottom: 12px;">
+    <div id="beneficiaryList">
+      <div class="skeleton" style="height: 64px;"></div>
+      <div class="skeleton" style="height: 64px; margin-top: 8px;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    let allBeneficiaries = [];
+
+    function authHeaders() {
+      return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
+
+    async function loadBeneficiaries() {
+      try {
+        allBeneficiaries = await fetch('/api/beneficiaries', { headers: authHeaders() }).then((r) => r.json());
+        render(allBeneficiaries);
+      } catch {
+        OrionUI.toast('Could not load beneficiaries.', 'error');
+      }
+    }
+
+    function render(items) {
+      const div = document.getElementById('beneficiaryList');
+      const meta = document.getElementById('listMeta');
+      meta.textContent = `${items.length} of ${allBeneficiaries.length} beneficiary${items.length === 1 ? '' : 'ies'}`;
+      div.innerHTML = '';
+      if (items.length === 0) {
+        div.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No beneficiaries</h4><p>Add one above — or it'll be auto-saved next time you transfer money to someone new.</p></div>`;
+        return;
+      }
+      for (const b of items) {
+        const categoryColor = {
+          family: 'var(--accent)',
+          friend: 'var(--info)',
+          business: 'var(--paper-dim)',
+          utility: 'var(--success)',
+          other: 'var(--text-dim)',
+        }[b.category] || 'var(--text-dim)';
+        const item = document.createElement('div');
+        item.innerHTML = `
+          <div class="linked-card" style="margin-bottom: 10px;">
+            <div class="who">
+              <div class="mini-avatar" style="background: linear-gradient(160deg, ${categoryColor}, var(--accent));">${escapeHtml((b.nickname || b.recipient_name).charAt(0).toUpperCase())}</div>
+              <div>
+                <div class="name">${escapeHtml(b.nickname || b.recipient_name)}</div>
+                <div class="acc">${escapeHtml(b.recipient_name)} · <code>${b.recipient_account_number}</code></div>
+                <div class="acc"><span class="badge" style="background: ${categoryColor}33; color: ${categoryColor};">${b.category}</span> · added ${OrionUI.fmtDateShort(b.created_at)}</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button class="switch-btn transfer-btn" data-id="${b.id}">Transfer →</button>
+              <button class="switch-btn edit-btn" data-id="${b.id}" style="border-color: var(--text-dim); color: var(--text-dim);">Edit</button>
+              <button class="switch-btn delete-btn" data-id="${b.id}" style="border-color: var(--danger); color: var(--danger);">Delete</button>
+            </div>
+          </div>`;
+        div.appendChild(item);
+      }
+
+      // Wire up buttons
+      div.querySelectorAll('.transfer-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const b = items.find((x) => x.id === parseInt(btn.dataset.id, 10));
+          if (b) {
+            localStorage.setItem('pending_transfer_recipient', b.recipient_account_number);
+            window.location.href = '/transfer';
+          }
+        });
+      });
+      div.querySelectorAll('.edit-btn').forEach((btn) => {
+        btn.addEventListener('click', () => openEditModal(parseInt(btn.dataset.id, 10)));
+      });
+      div.querySelectorAll('.delete-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = parseInt(btn.dataset.id, 10);
+          const ok = await OrionUI.confirmModal({
+            title: 'Delete this beneficiary?',
+            body: 'Past transfers to this recipient will remain in your transaction history.',
+            confirmLabel: 'Delete',
+            danger: true,
+          });
+          if (!ok) return;
+          const r = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE', headers: authHeaders() });
+          if (r.status === 204) {
+            OrionUI.toast('Deleted', 'success', 1500);
+            loadBeneficiaries();
+          }
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    function openEditModal(id) {
+      const b = allBeneficiaries.find((x) => x.id === id);
+      if (!b) return;
+      const modal = document.createElement('div');
+      modal.className = 'modal-backdrop';
+      modal.innerHTML = `
+        <div class="modal" style="max-width: 440px;">
+          <h3>Edit beneficiary</h3>
+          <p style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Recipient: <code>${escapeHtml(b.recipient_account_number)}</code> (${escapeHtml(b.recipient_name)})</p>
+          <label for="editNickname">Nickname</label>
+          <input id="editNickname" type="text" maxlength="100" value="${escapeHtml(b.nickname || '')}" placeholder="Add a nickname">
+          <label for="editCategory">Category</label>
+          <select id="editCategory">
+            <option value="family" ${b.category === 'family' ? 'selected' : ''}>Family</option>
+            <option value="friend" ${b.category === 'friend' ? 'selected' : ''}>Friend</option>
+            <option value="business" ${b.category === 'business' ? 'selected' : ''}>Business</option>
+            <option value="utility" ${b.category === 'utility' ? 'selected' : ''}>Utility</option>
+            <option value="other" ${b.category === 'other' ? 'selected' : ''}>Other</option>
+          </select>
+          <div class="actions">
+            <button class="btn ghost" id="editCancel">Cancel</button>
+            <button class="btn" id="editSave">Save</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('#editCancel').addEventListener('click', () => modal.remove());
+      modal.querySelector('#editSave').addEventListener('click', async () => {
+        const payload = {
+          nickname: modal.querySelector('#editNickname').value.trim() || null,
+          category: modal.querySelector('#editCategory').value,
+        };
+        const r = await fetch(`/api/beneficiaries/${id}`, {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          modal.remove();
+          OrionUI.toast('Saved', 'success', 1500);
+          loadBeneficiaries();
+        } else {
+          OrionUI.toast(r?.error?.message || 'Could not save', 'error');
+        }
+      });
+    }
+
+    // Search filter (client-side)
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      if (!q) {
+        render(allBeneficiaries);
+        return;
+      }
+      const filtered = allBeneficiaries.filter((b) =>
+        b.recipient_name.toLowerCase().includes(q) ||
+        (b.nickname || '').toLowerCase().includes(q) ||
+        b.recipient_account_number.includes(q)
+      );
+      render(filtered);
+    });
+
+    // Create form
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('createMsg');
+      msg.className = 'msg';
+      const acc = document.getElementById('bnAcc').value.trim();
+      const nickname = document.getElementById('bnNickname').value.trim() || null;
+      const category = document.getElementById('bnCategory').value;
+      if (acc.length !== 14) {
+        msg.className = 'msg err show';
+        msg.textContent = 'Account number must be 14 digits.';
+        return;
+      }
+      try {
+        const r = await fetch('/api/beneficiaries', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ recipient_account_number: acc, nickname, category }),
+        }).then((r) => r.json());
+        if (r && r.id) {
+          msg.className = 'msg ok show';
+          msg.textContent = `Saved: ${r.recipient_name} (account ${r.recipient_account_number})`;
+          document.getElementById('createForm').reset();
+          loadBeneficiaries();
+          OrionUI.toast('Beneficiary added', 'success', 2000);
+        } else {
+          msg.className = 'msg err show';
+          msg.textContent = r?.error?.message || r?.detail?.[0]?.msg || 'Could not save.';
+        }
+      } catch {
+        msg.className = 'msg err show';
+        msg.textContent = 'Network error.';
+      }
+    });
+
+    loadBeneficiaries();
+  })();
+</script>
+{% endblock %}

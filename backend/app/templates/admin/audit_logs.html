@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Audit logs — Admin{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/admin'">Dashboard</button>
+  <button onclick="window.location.href='/admin/kyc'">KYC Queue</button>
+  <button onclick="window.location.href='/admin/users'">Users</button>
+  <button class="active" aria-current="page">Audit Logs</button>
+  <button onclick="window.location.href='/dashboard'" style="margin-left:24px;">← Customer view</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 1100px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Append-only trail</div>
+      <h2>Audit logs</h2>
+      <div class="acc">Every security-relevant action across the system. Filters apply live; click a row for details.</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Filters</h3>
+    <div class="row2" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+      <div>
+        <label for="fUser">User ID</label>
+        <input id="fUser" type="number" placeholder="e.g. 3">
+      </div>
+      <div>
+        <label for="fAction">Action (substring)</label>
+        <input id="fAction" type="text" placeholder="e.g. login, kyc, transfer">
+      </div>
+      <div>
+        <label for="fSearch">Free text</label>
+        <input id="fSearch" type="text" placeholder="search details / IP / request_id">
+      </div>
+    </div>
+    <div class="row2" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 8px;">
+      <div>
+        <label for="fStart">Start date</label>
+        <input id="fStart" type="datetime-local">
+      </div>
+      <div>
+        <label for="fEnd">End date</label>
+        <input id="fEnd" type="datetime-local">
+      </div>
+      <div style="display:flex; align-items:flex-end; gap:8px;">
+        <button class="btn ghost icon" id="applyBtn" style="width:auto; margin:0;">Apply</button>
+        <button class="btn ghost icon" id="clearBtn" style="width:auto; margin:0;">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <h3>Results</h3>
+    <p class="sub" id="resultsMeta">—</p>
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border);">
+            <th style="text-align:left; padding: 8px; color: var(--text-dim); font-weight: 600;">When</th>
+            <th style="text-align:left; padding: 8px; color: var(--text-dim); font-weight: 600;">Action</th>
+            <th style="text-align:left; padding: 8px; color: var(--text-dim); font-weight: 600;">User</th>
+            <th style="text-align:left; padding: 8px; color: var(--text-dim); font-weight: 600;">Details</th>
+            <th style="text-align:left; padding: 8px; color: var(--text-dim); font-weight: 600;">IP / Request ID</th>
+          </tr>
+        </thead>
+        <tbody id="logTableBody">
+          <tr><td colspan="5" style="padding: 24px; text-align:center; color: var(--text-dim);">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px;">
+      <button class="btn ghost icon" id="prevBtn" style="width:auto;">← Previous</button>
+      <span id="pageInfo" style="color: var(--text-dim); font-size: 13px;">—</span>
+      <button class="btn ghost icon" id="nextBtn" style="width:auto;">Next →</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    let currentPage = 0;
+    const pageSize = 50;
+    let lastTotal = 0;
+
+    function authHeaders() {
+      return { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
+
+    function categoryForAction(action) {
+      if (action.startsWith('login') || action === 'logout' || action === 'register') return { name: 'auth', color: 'var(--info)' };
+      if (action.includes('kyc')) return { name: 'kyc', color: 'var(--accent)' };
+      if (action.startsWith('admin_')) return { name: 'admin', color: 'var(--danger)' };
+      if (action.startsWith('webhook')) return { name: 'webhook', color: 'var(--paper-dim)' };
+      if (action.startsWith('2fa') || action.includes('totp')) return { name: '2fa', color: 'var(--success)' };
+      if (action.startsWith('scheduled_transfer')) return { name: 'scheduled', color: 'var(--info)' };
+      if (action.startsWith('beneficiary')) return { name: 'beneficiary', color: 'var(--accent)' };
+      if (['deposit', 'withdrawal', 'transfer_outgoing', 'transfer_incoming'].includes(action)) return { name: 'tx', color: 'var(--success)' };
+      return { name: 'other', color: 'var(--text-dim)' };
+    }
+
+    function buildParams(page) {
+      const params = new URLSearchParams();
+      params.set('skip', String(page * pageSize));
+      params.set('limit', String(pageSize));
+      const userId = document.getElementById('fUser').value.trim();
+      const action = document.getElementById('fAction').value.trim();
+      const search = document.getElementById('fSearch').value.trim();
+      const start = document.getElementById('fStart').value;
+      const end = document.getElementById('fEnd').value;
+      if (userId) params.set('user_id', userId);
+      if (action) params.set('action', action);
+      if (search) params.set('search', search);
+      if (start) params.set('start_date', new Date(start).toISOString());
+      if (end) params.set('end_date', new Date(end).toISOString());
+      return params;
+    }
+
+    async function load(page) {
+      currentPage = page;
+      const params = buildParams(page);
+      try {
+        const r = await fetch(`/api/admin/audit-logs?${params}`, { headers: authHeaders() });
+        if (r.status === 403) {
+          OrionUI.toast('Admins only.', 'error', 3000);
+          setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
+          return;
+        }
+        const body = await r.json();
+        lastTotal = body.total;
+        render(body);
+      } catch {
+        OrionUI.toast('Could not load audit logs.', 'error');
+      }
+    }
+
+    function render(body) {
+      const tbody = document.getElementById('logTableBody');
+      const meta = document.getElementById('resultsMeta');
+      meta.textContent = `Showing ${body.items.length} of ${body.total} total entries.`;
+
+      if (body.items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="padding: 24px; text-align:center; color: var(--text-dim);">No audit log entries match these filters.</td></tr>`;
+      } else {
+        tbody.innerHTML = body.items.map((log) => {
+          const cat = categoryForAction(log.action);
+          const when = OrionUI.fmtDate(log.created_at);
+          const user = log.user_full_name
+            ? `<strong>${escapeHtml(log.user_full_name)}</strong><br><span style="color: var(--text-dim); font-size: 11px;">${escapeHtml(log.user_email || '')} · id=${log.user_id}</span>`
+            : '<span style="color: var(--text-dim);">—</span>';
+          const details = log.details ? escapeHtml(log.details) : '<span style="color: var(--text-dim);">—</span>';
+          const meta = `
+            ${log.ip_address ? `<div style="font-family: var(--font-mono); font-size: 11px;">IP: ${escapeHtml(log.ip_address)}</div>` : ''}
+            ${log.request_id ? `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">req: ${escapeHtml(log.request_id.substring(0, 8))}…</div>` : ''}
+            ${log.user_agent ? `<div style="font-size: 10px; color: var(--text-dim); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(log.user_agent)}</div>` : ''}
+          `;
+          return `
+            <tr style="border-bottom: 1px solid var(--border); cursor: pointer;" data-id="${log.id}">
+              <td style="padding: 8px; vertical-align: top; white-space: nowrap;">${when}</td>
+              <td style="padding: 8px; vertical-align: top;">
+                <span class="badge" style="background: ${cat.color}22; color: ${cat.color}; font-size: 10px; margin-right: 4px;">${cat.name}</span>
+                <strong style="font-family: var(--font-mono); font-size: 12px;">${escapeHtml(log.action)}</strong>
+              </td>
+              <td style="padding: 8px; vertical-align: top;">${user}</td>
+              <td style="padding: 8px; vertical-align: top; max-width: 360px; word-break: break-word; font-size: 12px;">${details}</td>
+              <td style="padding: 8px; vertical-align: top;">${meta}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Pagination
+      const totalPages = Math.max(1, Math.ceil(body.total / pageSize));
+      document.getElementById('pageInfo').textContent = `Page ${currentPage + 1} of ${totalPages}`;
+      document.getElementById('prevBtn').disabled = currentPage === 0;
+      document.getElementById('nextBtn').disabled = (currentPage + 1) * pageSize >= body.total;
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    document.getElementById('applyBtn').addEventListener('click', () => load(0));
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      ['fUser', 'fAction', 'fSearch', 'fStart', 'fEnd'].forEach((id) => {
+        document.getElementById(id).value = '';
+      });
+      load(0);
+    });
+    document.getElementById('prevBtn').addEventListener('click', () => {
+      if (currentPage > 0) load(currentPage - 1);
+    });
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      if ((currentPage + 1) * pageSize < lastTotal) load(currentPage + 1);
+    });
+
+    // Enter key on filter inputs triggers Apply
+    ['fUser', 'fAction', 'fSearch'].forEach((id) => {
+      document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') load(0);
+      });
+    });
+
+    load(0);
+  })();
+</script>
+{% endblock %}

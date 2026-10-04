@@ -119,6 +119,13 @@ def admin_users_page(request: Request):
     )
 
 
+@router.get("/admin/audit-logs", response_class=HTMLResponse, dependencies=[Depends(get_admin_user)])
+def admin_audit_logs_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "admin/audit_logs.html", _ctx(request, page="admin_audit_logs")
+    )
+
+
 # ── Webhooks management ──────────────────────────────────────────
 @router.get("/webhooks", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
 def webhooks_page(request: Request):
@@ -132,4 +139,36 @@ def webhook_detail_page(request: Request, webhook_id: int):
     return request.app.state.templates.TemplateResponse(
         "webhooks/detail.html",
         _ctx(request, page="webhook_detail", webhook_id=webhook_id),
+    )
+
+
+# ── Scheduled transfers ───────────────────────────────────────────
+@router.get("/scheduled-transfers", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def scheduled_transfers_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "scheduled_transfers/index.html", _ctx(request, page="scheduled_transfers")
+    )
+
+
+@router.get("/scheduled-transfers/{schedule_id}", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def scheduled_transfer_detail_page(request: Request, schedule_id: int):
+    return request.app.state.templates.TemplateResponse(
+        "scheduled_transfers/detail.html",
+        _ctx(request, page="scheduled_transfer_detail", schedule_id=schedule_id),
+    )
+
+
+# ── Beneficiaries ─────────────────────────────────────────────────
+@router.get("/beneficiaries", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def beneficiaries_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "beneficiaries/index.html", _ctx(request, page="beneficiaries")
+    )
+
+
+# ── Notifications center ──────────────────────────────────────────
+@router.get("/notifications", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def notifications_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "notifications/index.html", _ctx(request, page="notifications")
     )
