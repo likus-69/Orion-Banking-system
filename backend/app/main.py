@@ -25,7 +25,7 @@ from app.exceptions import OrionError
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestIdMiddleware
 from app.routes import (
-    accounts, admin, auth, beneficiaries, notifications, pages,
+    accounts, admin, analytics, auth, beneficiaries, notifications, pages,
     scheduled_transfers, statements,
     totp, transactions, webhooks,
 )
@@ -156,6 +156,7 @@ app.include_router(webhooks.router)
 app.include_router(totp.router)
 app.include_router(scheduled_transfers.router)
 app.include_router(beneficiaries.router)
+app.include_router(analytics.router)
 app.include_router(pages.router)  # Jinja2 HTML routes — last so /api takes precedence
 
 

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+{% block title %}Analytics — Orion Banking{% endblock %}
+
+{% block nav_links %}
+  <button onclick="window.location.href='/dashboard'">Overview</button>
+  <button class="active" aria-current="page">Analytics</button>
+  <button onclick="window.location.href='/deposit'">Deposit</button>
+  <button onclick="window.location.href='/transactions'">Transactions</button>
+  <button onclick="window.location.href='/transfer'">Transfer</button>
+  <button onclick="window.location.href='/beneficiaries'">Beneficiaries</button>
+  <button onclick="window.location.href='/scheduled-transfers'">Schedules</button>
+  <button onclick="window.location.href='/settings'">Settings</button>
+  <button onclick="window.location.href='/profile'">Profile</button>
+  <button onclick="window.location.href='/webhooks'">Webhooks</button>
+  <button class="danger" data-action="logout">Log out</button>
+{% endblock %}
+
+{% block content %}
+<div class="page" style="max-width: 1100px;">
+  <div class="page-head">
+    <div class="who">
+      <div class="eyebrow">Insights</div>
+      <h2>Analytics</h2>
+      <div class="acc" id="rangeLabel">Last 90 days</div>
+    </div>
+    <div class="filter-row" id="rangeFilter">
+      <button data-days="30">30d</button>
+      <button data-days="90" class="active">90d</button>
+      <button data-days="365">1y</button>
+      <button data-days="">All</button>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div class="quick-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Total income</div>
+      <div style="font-family: var(--font-display); font-size: 28px; font-weight: 600; margin-top: 8px; color: var(--success);" id="kpiIncome">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Total expenses</div>
+      <div style="font-family: var(--font-display); font-size: 28px; font-weight: 600; margin-top: 8px; color: var(--danger);" id="kpiExpenses">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Net change</div>
+      <div style="font-family: var(--font-display); font-size: 28px; font-weight: 600; margin-top: 8px; color: var(--accent);" id="kpiNet">—</div>
+    </div>
+    <div class="section-card" style="padding: 18px 20px;">
+      <div class="label" style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em;">Avg transaction</div>
+      <div style="font-family: var(--font-display); font-size: 28px; font-weight: 600; margin-top: 8px;" id="kpiAvg">—</div>
+    </div>
+  </div>
+
+  <!-- Balance trend (line) -->
+  <div class="chart-card">
+    <h3>Balance over time</h3>
+    <p class="sub" style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Daily closing balance for the selected range.</p>
+    <canvas id="balanceChart" width="800" height="240"></canvas>
+    <div id="balanceEmpty" class="empty-state" style="display: none;">
+      <div class="icon">◇</div>
+      <h4>No transactions in this range</h4>
+      <p>Make a deposit or transfer to see your balance trend.</p>
+    </div>
+  </div>
+
+  <!-- Income vs expenses (stacked bar) + By category (doughnut) -->
+  <div class="row2" style="grid-template-columns: 1.4fr 1fr;">
+    <div class="chart-card">
+      <h3>Income vs expenses</h3>
+      <p class="sub" style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Monthly breakdown of money in vs out.</p>
+      <canvas id="monthlyChart" width="500" height="280"></canvas>
+      <div id="monthlyEmpty" class="empty-state" style="display: none;">
+        <div class="icon">◇</div>
+        <h4>No monthly data</h4>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>Spending by category</h3>
+      <p class="sub" style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">Where your money went.</p>
+      <canvas id="categoryChart" width="320" height="280"></canvas>
+      <div id="categoryEmpty" class="empty-state" style="display: none;">
+        <div class="icon">◇</div>
+        <h4>No expenses yet</h4>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top counterparties -->
+  <div class="chart-card">
+    <h3>Top counterparties</h3>
+    <p class="sub" style="color: var(--text-dim); font-size: 13px; margin: 0 0 16px;">People you've transferred most with, by total volume.</p>
+    <div id="counterpartiesList">
+      <div class="skeleton" style="height: 48px;"></div>
+      <div class="skeleton" style="height: 48px; margin-top: 8px;"></div>
+      <div class="skeleton" style="height: 48px; margin-top: 8px;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    if (!OrionUI.requireAuth('/login')) return;
+
+    let balanceChart = null;
+    let monthlyChart = null;
+    let categoryChart = null;
+    let currentDays = 90;
+
+    function authHeaders() {
+      return { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }
+
+    async function load(days) {
+      const params = days ? `?days=${days}` : '?all_time=true';
+      try {
+        const r = await fetch(`/api/analytics/summary${params}`, { headers: authHeaders() });
+        if (!r.ok) {
+          OrionUI.toast('Could not load analytics.', 'error');
+          return;
+        }
+        const data = await r.json();
+        render(data);
+      } catch (err) {
+        OrionUI.toast('Network error loading analytics.', 'error');
+      }
+    }
+
+    function fmtMoney(n) {
+      const v = Number(n || 0);
+      const sign = v < 0 ? '−' : '';
+      return sign + '$' + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function render(data) {
+      // KPIs
+      document.getElementById('kpiIncome').textContent = fmtMoney(data.kpi.total_income);
+      document.getElementById('kpiExpenses').textContent = fmtMoney(data.kpi.total_expenses);
+      document.getElementById('kpiNet').textContent = fmtMoney(data.kpi.net_change);
+      document.getElementById('kpiAvg').textContent = fmtMoney(data.kpi.avg_transaction_size);
+
+      // Range label
+      const rangeLabel = data.range_days ? `Last ${data.range_days} days · ${data.transaction_count} transactions` : `All time · ${data.transaction_count} transactions`;
+      document.getElementById('rangeLabel').textContent = rangeLabel;
+
+      renderBalance(data.balance_series);
+      renderMonthly(data.monthly_income_vs_expense);
+      renderCategory(data.by_category);
+      renderCounterparties(data.top_counterparties);
+    }
+
+    function renderBalance(series) {
+      const empty = document.getElementById('balanceEmpty');
+      const canvas = document.getElementById('balanceChart');
+      if (!series || series.length === 0) {
+        canvas.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      canvas.style.display = 'block';
+      empty.style.display = 'none';
+      if (balanceChart) balanceChart.destroy();
+      const labels = series.map((p) => p.date);
+      const values = series.map((p) => p.balance);
+      balanceChart = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Balance',
+            data: values,
+            borderColor: '#e8b85c',
+            backgroundColor: 'rgba(232, 184, 92, 0.15)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.25,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => fmtMoney(ctx.parsed.y),
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9aa6bd', font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+              grid: { color: 'rgba(255,255,255,0.05)' },
+            },
+            y: {
+              ticks: {
+                color: '#9aa6bd', font: { size: 11 },
+                callback: (v) => '$' + Number(v).toLocaleString(),
+              },
+              grid: { color: 'rgba(255,255,255,0.05)' },
+            },
+          },
+        },
+      });
+    }
+
+    function renderMonthly(items) {
+      const empty = document.getElementById('monthlyEmpty');
+      const canvas = document.getElementById('monthlyChart');
+      if (!items || items.length === 0) {
+        canvas.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      canvas.style.display = 'block';
+      empty.style.display = 'none';
+      if (monthlyChart) monthlyChart.destroy();
+      monthlyChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: items.map((i) => i.month),
+          datasets: [
+            {
+              label: 'Income',
+              data: items.map((i) => i.income),
+              backgroundColor: '#5fbe8a',
+            },
+            {
+              label: 'Expenses',
+              data: items.map((i) => i.expense),
+              backgroundColor: '#d9727f',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#9aa6bd', font: { size: 11 } } },
+            tooltip: {
+              callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtMoney(ctx.parsed.y)}` },
+            },
+          },
+          scales: {
+            x: { ticks: { color: '#9aa6bd', font: { size: 10 } }, grid: { display: false } },
+            y: { ticks: { color: '#9aa6bd', font: { size: 11 }, callback: (v) => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          },
+        },
+      });
+    }
+
+    function renderCategory(items) {
+      const empty = document.getElementById('categoryEmpty');
+      const canvas = document.getElementById('categoryChart');
+      if (!items || items.length === 0) {
+        canvas.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+      canvas.style.display = 'block';
+      empty.style.display = 'none';
+      if (categoryChart) categoryChart.destroy();
+      const palette = ['#e8b85c', '#7fb8d9', '#5fbe8a', '#d9727f', '#a9853f', '#9aa6bd', '#5a8db8', '#c66e3a', '#8a7eb8', '#b8a35a'];
+      categoryChart = new Chart(canvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: items.map((i) => i.category),
+          datasets: [{
+            data: items.map((i) => i.amount),
+            backgroundColor: palette.slice(0, items.length),
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#9aa6bd', font: { size: 11 } } },
+            tooltip: {
+              callbacks: { label: (ctx) => `${ctx.label}: ${fmtMoney(ctx.parsed)}` },
+            },
+          },
+          cutout: '60%',
+        },
+      });
+    }
+
+    function renderCounterparties(items) {
+      const div = document.getElementById('counterpartiesList');
+      div.innerHTML = '';
+      if (!items || items.length === 0) {
+        div.innerHTML = `<div class="empty-state"><div class="icon">◇</div><h4>No counterparties yet</h4><p>Make some transfers to see who you transact with most.</p></div>`;
+        return;
+      }
+      const max = Math.max(...items.map((i) => i.total_volume));
+      for (const c of items) {
+        const pct = (c.total_volume / max) * 100;
+        const row = document.createElement('div');
+        row.style.cssText = 'padding: 12px 0; border-bottom: 1px solid var(--border);';
+        row.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+            <strong style="font-size: 13px;">${escapeHtml(c.name)}</strong>
+            <span style="font-family: var(--font-mono); font-size: 13px; color: var(--accent);">${fmtMoney(c.total_volume)}</span>
+          </div>
+          <div style="height: 6px; background: var(--bg-input); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${pct}%; background: linear-gradient(90deg, var(--ice), var(--accent));"></div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+            in: ${fmtMoney(c.total_in)} · out: ${fmtMoney(c.total_out)} · ${c.transaction_count} transfer${c.transaction_count === 1 ? '' : 's'}
+          </div>`;
+        div.appendChild(row);
+      }
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    // Range filter
+    document.getElementById('rangeFilter').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-days]');
+      if (!btn) return;
+      document.querySelectorAll('#rangeFilter button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentDays = btn.dataset.days ? parseInt(btn.dataset.days, 10) : null;
+      load(currentDays);
+    });
+
+    load(currentDays);
+  })();
+</script>
+{% endblock %}

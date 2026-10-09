@@ -33,7 +33,7 @@ A modern, security-hardened online banking API + UI built with FastAPI, SQLAlche
 - **Webhooks** — per-user subscriptions with HMAC-SHA256 signed payloads + retry policy + delivery history
 
 ### Testing
-- 150 pytest tests covering auth, accounts, transactions, statements, notifications, the admin panel, email triggers, webhooks, 2FA, scheduled transfers, beneficiaries, and the audit log viewer
+- 163 pytest tests covering auth, accounts, transactions, statements, notifications center, the admin panel + audit log viewer, email triggers, webhooks, 2FA, scheduled transfers, and beneficiaries
 - GitHub Actions CI workflow (lint + test on every push/PR)
 
 ---
