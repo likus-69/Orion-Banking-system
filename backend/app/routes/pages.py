@@ -172,3 +172,11 @@ def notifications_page(request: Request):
     return request.app.state.templates.TemplateResponse(
         "notifications/index.html", _ctx(request, page="notifications")
     )
+
+
+# ── Analytics ─────────────────────────────────────────────────────
+@router.get("/analytics", response_class=HTMLResponse, dependencies=[Depends(get_current_user)])
+def analytics_page(request: Request):
+    return request.app.state.templates.TemplateResponse(
+        "analytics/index.html", _ctx(request, page="analytics")
+    )

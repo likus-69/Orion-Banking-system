@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from app.services.account_service import AccountService
 from app.services.admin_service import AdminService
+from app.services.analytics_service import AnalyticsService
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.beneficiary_service import BeneficiaryService
@@ -17,6 +18,7 @@ from app.services.webhook_service import WebhookEvents, WebhookService
 __all__ = [
     "AccountService",
     "AdminService",
+    "AnalyticsService",
     "AuditService",
     "AuthService",
     "BeneficiaryService",

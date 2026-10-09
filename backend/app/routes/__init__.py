@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.routes import (
     accounts,
     admin,
+    analytics,
     auth,
     beneficiaries,
     notifications,
@@ -16,7 +17,7 @@ from app.routes import (
 )
 
 __all__ = [
-    "accounts", "admin", "auth", "beneficiaries", "notifications", "pages",
+    "accounts", "admin", "analytics", "auth", "beneficiaries", "notifications", "pages",
     "scheduled_transfers", "statements", "totp",
     "transactions", "webhooks",
 ]
