@@ -26,9 +26,8 @@ def upgrade() -> None:
     execution_status_enum = sa.Enum(
         "success", "failed", "skipped", name="execution_status"
     )
-    schedule_type_enum.create(op.get_bind(), checkfirst=True)
-    schedule_status_enum.create(op.get_bind(), checkfirst=True)
-    execution_status_enum.create(op.get_bind(), checkfirst=True)
+    # create_table() below creates the enum types on Postgres; creating them
+    # explicitly as well fails with "type already exists".
 
     op.create_table(
         "scheduled_transfers",

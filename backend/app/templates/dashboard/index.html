@@ -48,25 +48,32 @@
     </ul>
   </div>
 
-  <div class="chart-card" id="spendingCard" style="display:none;">
-    <h3>Spending breakdown</h3>
-    <p class="sub">Last 30 days · by transaction type</p>
-    <canvas id="spendingChart" width="320" height="240"></canvas>
+  <div class="section-card">
+    <h3>Monthly spending</h3>
+    <p class="sub">Money out over the last 30 days.</p>
+    <div style="display:flex;align-items:baseline;gap:10px;margin:6px 0 16px;">
+      <span id="monthSpent" style="font-family:var(--font-display);font-size:32px;font-weight:600;color:var(--danger);">—</span>
+      <span id="monthCount" style="color:var(--text-dim);font-size:12px;"></span>
+    </div>
+    <ul class="history" id="spendingByCategory">
+      <li class="skeleton-row" style="display:block;height:40px;"></li>
+      <li class="skeleton-row" style="display:block;height:40px;"></li>
+    </ul>
   </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
   (function () {
     if (!OrionUI.requireAuth()) return;
 
     async function load() {
       try {
-        const [user, txs] = await Promise.all([
+        const [user, txs, analytics] = await Promise.all([
           OrionAPI.me(),
           OrionAPI.listTransactions({ skip: 0, limit: 5 }),
+          OrionAPI.analyticsSummary({ days: 30 }),
         ]);
         document.getElementById('userName').textContent = user.full_name;
         document.getElementById('userAcc').textContent =
@@ -84,7 +91,7 @@
         kycBadge.textContent = `KYC: ${user.kyc_status.replace('_', ' ')}`;
 
         renderRecent(txs);
-        renderChart(txs);
+        renderSpending(analytics);
       } catch (err) {
         OrionUI.toast('Could not load your account.', 'error');
       }
@@ -120,29 +127,30 @@
       }
     }
 
-    function renderChart(txs) {
-      if (!txs || txs.length === 0) return;
-      const card = document.getElementById('spendingCard');
-      card.style.display = 'block';
-      const ctx = document.getElementById('spendingChart').getContext('2d');
-      const byType = { deposit: 0, withdrawal: 0, transfer: 0 };
-      for (const t of txs) byType[t.type] = (byType[t.type] || 0) + Number(t.amount);
-      new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['Deposits', 'Withdrawals', 'Transfers'],
-          datasets: [{
-            data: [byType.deposit, byType.withdrawal, byType.transfer],
-            backgroundColor: ['#5fbe8a', '#d9727f', '#7fb8d9'],
-            borderWidth: 0,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { position: 'bottom', labels: { color: '#9aa6bd', font: { size: 12 } } } },
-        },
-      });
+    function renderSpending(data) {
+      document.getElementById('monthSpent').textContent = OrionUI.fmtMoney(data.kpi.total_expenses);
+      const n = data.kpi.transaction_count_out;
+      document.getElementById('monthCount').textContent = `across ${n} payment${n === 1 ? '' : 's'}`;
+
+      const ul = document.getElementById('spendingByCategory');
+      ul.innerHTML = '';
+      const cats = (data.by_category || []).slice(0, 4);
+      if (cats.length === 0) {
+        ul.innerHTML = `<li class="empty">No spending in the last 30 days.</li>`;
+        return;
+      }
+      for (const c of cats) {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="dot withdrawal"></span>
+          <div style="flex:1;"><strong>${escapeHtml(titleCase(c.category))}</strong></div>
+          <span class="amt neg">${OrionUI.fmtMoney(c.amount)}</span>`;
+        ul.appendChild(li);
+      }
+    }
+
+    function titleCase(s) {
+      return String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
     function escapeHtml(s) {

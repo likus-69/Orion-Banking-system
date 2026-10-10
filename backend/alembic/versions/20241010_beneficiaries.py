@@ -21,7 +21,8 @@ def upgrade() -> None:
         "family", "friend", "business", "utility", "other",
         name="beneficiary_category",
     )
-    category_enum.create(op.get_bind(), checkfirst=True)
+    # create_table() below creates the enum type on Postgres; creating it
+    # explicitly as well fails with "type already exists".
 
     op.create_table(
         "beneficiaries",
