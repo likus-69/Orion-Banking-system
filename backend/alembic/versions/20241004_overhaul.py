@@ -6,6 +6,8 @@ Create Date: 2024-10-04 00:00:00
 """
 from __future__ import annotations
 
+import secrets
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -78,11 +80,16 @@ def upgrade() -> None:
     tx_category_enum.create(op.get_bind(), checkfirst=True)
 
     # Backfill reference for existing rows so we can set NOT NULL.
-    op.execute("""
-        UPDATE transactions
-        SET reference = 'ORX-' || substr(hex(randomblob(2)), 1, 4) || '-' || substr(hex(randomblob(2)), 1, 4)
-        WHERE reference IS NULL
-    """)
+    # Generated in Python: the original SQL used SQLite-only randomblob()/hex().
+    conn = op.get_bind()
+    pending = conn.execute(
+        sa.text("SELECT id FROM transactions WHERE reference IS NULL")
+    ).fetchall()
+    for (tx_id,) in pending:
+        conn.execute(
+            sa.text("UPDATE transactions SET reference = :ref WHERE id = :id"),
+            {"ref": f"ORX-{secrets.token_hex(2)}-{secrets.token_hex(2)}", "id": tx_id},
+        )
     op.alter_column("transactions", "reference", existing_type=sa.String(length=32), nullable=False)
     op.create_index("ix_transactions_reference", "transactions", ["reference"], unique=True)
     op.create_index("ix_transactions_idempotency_key", "transactions", ["idempotency_key"], unique=True)
