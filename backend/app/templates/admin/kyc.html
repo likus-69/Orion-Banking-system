@@ -45,7 +45,7 @@
           setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
           return;
         }
-        const queue = await fetch('/api/admin/kyc/pending').then((r) => r.json());
+        const queue = await OrionAPI.adminListPendingKyc();
         renderQueue(queue);
       } catch (err) {
         OrionUI.toast('Could not load KYC queue.', 'error');

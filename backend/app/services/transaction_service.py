@@ -182,6 +182,10 @@ class TransactionService:
             raise AccountNotFoundError()
         if recipient.id == sender.id:
             raise SelfTransferError()
+        # Admins can't receive transfers — they're staff, not customers.
+        from app.models.user import UserRole
+        if recipient.role == UserRole.admin:
+            raise AccountNotFoundError("Recipient account not found.")
 
         # Lock both rows in deterministic order to avoid deadlocks.
         first_id, second_id = sorted([sender.id, recipient.id])

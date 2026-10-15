@@ -1,16 +1,23 @@
 """Transactions API routes — deposit / withdraw / transfer / history / detail."""
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user, get_db, get_request_meta
+from app.exceptions import AuthorizationError
 from app.models.transaction import TransactionCategory, TransactionStatus, TransactionType
-from app.models.user import User
+from app.models.user import UserRole, User
 from app.schemas.transaction import DepositRequest, TransactionOut, TransferRequest, WithdrawRequest
 from app.services.email_service import EmailService
 from app.services.transaction_service import TransactionService
 from app.services.webhook_service import WebhookEvents, WebhookService
+
+
+def _reject_admin(current_user: User):
+    """Admins are staff, not customers — they can't deposit/withdraw/transfer."""
+    if current_user.role == UserRole.admin:
+        raise AuthorizationError("Admin accounts cannot perform financial transactions.")
 
 
 def _serialize(tx, user_id: int) -> TransactionOut:
@@ -48,6 +55,7 @@ def deposit(
     db: Session = Depends(get_db),
 ):
     meta = get_request_meta(request)
+    _reject_admin(current_user)
     service = TransactionService(db)
     tx = service.deposit(current_user, payload.amount, memo=payload.memo, **meta)
     EmailService(db, background_tasks=background_tasks).send_deposit_confirmation(
@@ -81,6 +89,7 @@ def withdraw(
     db: Session = Depends(get_db),
 ):
     meta = get_request_meta(request)
+    _reject_admin(current_user)
     service = TransactionService(db)
     tx = service.withdraw(current_user, payload.amount, memo=payload.memo, **meta)
     EmailService(db, background_tasks=background_tasks).send_withdrawal_confirmation(
@@ -114,6 +123,7 @@ def transfer(
     db: Session = Depends(get_db),
 ):
     meta = get_request_meta(request)
+    _reject_admin(current_user)
     service = TransactionService(db)
     tx = service.transfer(
         current_user,

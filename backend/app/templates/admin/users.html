@@ -58,10 +58,10 @@
           setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
           return;
         }
-        const params = new URLSearchParams({ skip: 0, limit: 100 });
-        if (currentRole) params.set('role', currentRole);
-        if (currentSearch) params.set('search', currentSearch);
-        const items = await fetch(`/api/admin/users?${params}`).then((r) => r.json());
+        const params = { skip: 0, limit: 100 };
+        if (currentRole) params.role = currentRole;
+        if (currentSearch) params.search = currentSearch;
+        const items = await OrionAPI.adminListUsers(params);
         render(items);
       } catch (err) {
         OrionUI.toast('Could not load users.', 'error');

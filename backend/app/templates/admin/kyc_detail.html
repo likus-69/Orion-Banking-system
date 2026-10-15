@@ -74,7 +74,7 @@
           setTimeout(() => { window.location.href = '/dashboard'; }, 1500);
           return;
         }
-        const u = await fetch(`/api/admin/users/${targetUserId}`).then((r) => r.json());
+        const u = await OrionAPI.adminGetUser(targetUserId);
         render(u);
       } catch (err) {
         OrionUI.toast('Could not load user.', 'error');
@@ -137,11 +137,7 @@
           danger: true,
         });
         if (!ok) return;
-        const r = await fetch(`/api/admin/kyc/${targetUserId}/reject`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason }),
-        }).then((r) => r.json());
+        const r = await OrionAPI.adminRejectKyc(targetUserId, reason);
         if (r && r.id) {
           msg.className = 'msg ok show';
           msg.textContent = 'KYC rejected. User notified.';
@@ -158,11 +154,7 @@
           confirmLabel: 'Approve',
         });
         if (!ok) return;
-        const r = await fetch(`/api/admin/kyc/${targetUserId}/approve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        }).then((r) => r.json());
+        const r = await OrionAPI.adminApproveKyc(targetUserId);
         if (r && r.id) {
           msg.className = 'msg ok show';
           msg.textContent = 'KYC approved. User notified.';

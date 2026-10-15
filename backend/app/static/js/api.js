@@ -223,32 +223,36 @@
     },
 
     // Admin
-    adminStats: () => fetch('/api/admin/stats').then((r) => r.json()),
+    adminStats: () => request('/api/admin/stats').then((r) => r.json()),
     adminListUsers: (params = {}) => {
       const q = new URLSearchParams(params).toString();
-      return fetch(`/api/admin/users${q ? '?' + q : ''}`).then((r) => r.json());
+      return request(`/api/admin/users${q ? '?' + q : ''}`).then((r) => r.json());
     },
-    adminGetUser: (id) => fetch(`/api/admin/users/${id}`).then((r) => r.json()),
+    adminGetUser: (id) => request(`/api/admin/users/${id}`).then((r) => r.json()),
     adminListPendingKyc: (params = {}) => {
       const q = new URLSearchParams(params).toString();
-      return fetch(`/api/admin/kyc/pending${q ? '?' + q : ''}`).then((r) => r.json());
+      return request(`/api/admin/kyc/pending${q ? '?' + q : ''}`).then((r) => r.json());
     },
     adminApproveKyc: (userId, notes = null) =>
-      fetch(`/api/admin/kyc/${userId}/approve`, {
+      request(`/api/admin/kyc/${userId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes }),
       }).then((r) => r.json()),
     adminRejectKyc: (userId, reason) =>
-      fetch(`/api/admin/kyc/${userId}/reject`, {
+      request(`/api/admin/kyc/${userId}/reject`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
       }).then((r) => r.json()),
     adminLockUser: (userId) =>
-      fetch(`/api/admin/users/${userId}/lock`, { method: 'POST' }).then((r) => r.json()),
+      request(`/api/admin/users/${userId}/lock`, { method: 'POST' }).then((r) => r.json()),
     adminUnlockUser: (userId) =>
-      fetch(`/api/admin/users/${userId}/unlock`, { method: 'POST' }).then((r) => r.json()),
+      request(`/api/admin/users/${userId}/unlock`, { method: 'POST' }).then((r) => r.json()),
+    adminListAuditLogs: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/api/admin/audit-logs${q ? '?' + q : ''}`).then((r) => r.json());
+    },
+    adminListAuditActions: () =>
+      request('/api/admin/audit-logs/actions').then((r) => r.json()),
 
     // Helpers
     getAccess, getRefresh, setTokens, clearTokens, setUser, getUser,
