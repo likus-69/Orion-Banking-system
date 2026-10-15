@@ -202,6 +202,12 @@
     getTransaction: (id) =>
       request(`/api/transactions/${id}`).then((r) => r.json()),
 
+    // Analytics
+    analyticsSummary: (params = {}) => {
+      const q = new URLSearchParams(params).toString();
+      return request(`/api/analytics/summary${q ? '?' + q : ''}`).then((r) => r.json());
+    },
+
     // Notifications
     listNotifications: (unreadOnly = false) =>
       request(`/api/notifications${unreadOnly ? '?unread_only=true' : ''}`).then((r) => r.json()),

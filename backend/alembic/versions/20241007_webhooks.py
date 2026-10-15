@@ -17,10 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # create_table() below creates the enum types on Postgres; creating them
+    # explicitly as well fails with "type already exists".
     webhook_status_enum = sa.Enum("active", "paused", "disabled", name="webhook_status")
     delivery_status_enum = sa.Enum("pending", "delivered", "failed", name="webhook_delivery_status")
-    webhook_status_enum.create(op.get_bind(), checkfirst=True)
-    delivery_status_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "webhook_subscriptions",

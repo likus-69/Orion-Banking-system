@@ -20,7 +20,7 @@ from slowapi.util import get_remote_address
 from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, SessionLocal, engine
 from app.exceptions import OrionError
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestIdMiddleware

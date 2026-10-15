@@ -41,8 +41,17 @@ def upgrade() -> None:
         "users",
         sa.Column("kyc_status_new", kyc_status_enum, nullable=True),
     )
-    # Backfill from existing string column
-    op.execute("UPDATE users SET kyc_status_new = CASE kyc_status WHEN 'verified' THEN 'verified' WHEN 'in_review' THEN 'in_review' WHEN 'rejected' THEN 'rejected' ELSE 'pending' END")
+    # Backfill from existing string column. On Postgres the target column is a
+    # real enum type, so the CASE expression needs an explicit cast.
+    backfill = (
+        "UPDATE users SET kyc_status_new = "
+        "(CASE kyc_status WHEN 'verified' THEN 'verified' "
+        "WHEN 'in_review' THEN 'in_review' WHEN 'rejected' THEN 'rejected' "
+        "ELSE 'pending' END)"
+    )
+    if dialect == "postgresql":
+        backfill += "::kyc_status"
+    op.execute(backfill)
     op.drop_column("users", "kyc_status")
     op.alter_column("users", "kyc_status_new", new_column_name="kyc_status",
                     existing_type=kyc_status_enum, nullable=False, server_default="pending")

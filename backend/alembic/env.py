@@ -3,7 +3,10 @@ from sqlalchemy import engine_from_config, pool
 
 from app.config import settings
 from app.database import Base
-from app.models.user import AuditLog, Transaction, User
+
+# Import the models package so every table is registered on Base.metadata
+# (AuditLog lives in app.models.audit_log, not app.models.user).
+import app.models  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
