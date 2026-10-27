@@ -75,6 +75,11 @@
           OrionAPI.listTransactions({ skip: 0, limit: 5 }),
           OrionAPI.analyticsSummary({ days: 30 }),
         ]);
+        // Redirect admins to admin dashboard
+        if (user.role === 'admin') {
+          window.location.href = '/admin';
+          return;
+        }
         document.getElementById('userName').textContent = user.full_name;
         document.getElementById('userAcc').textContent =
           `Account •••• ${user.account_number.slice(-4)} · ${user.email}`;

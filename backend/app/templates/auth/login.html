@@ -84,7 +84,14 @@
           document.getElementById('totpCode').focus();
         } else if (r.ok) {
           OrionUI.toast('Welcome back!', 'success', 2000);
-          setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+          // Check role — admins go to /admin, customers to /dashboard
+          try {
+            const me = await OrionAPI.me();
+            const target = me.role === 'admin' ? '/admin' : '/dashboard';
+            setTimeout(() => { window.location.href = target; }, 400);
+          } catch {
+            setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+          }
         } else {
           msg.className = 'msg err show';
           msg.textContent = r.data?.error?.message || 'Invalid email or PIN.';
@@ -121,7 +128,14 @@
         const r = await OrionAPI.verifyTotp(pendingChallenge, payload);
         if (r && r.access_token) {
           OrionUI.toast('Welcome back!', 'success', 2000);
-          setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+          // Check role — admins go to /admin, customers to /dashboard
+          try {
+            const me = await OrionAPI.me();
+            const target = me.role === 'admin' ? '/admin' : '/dashboard';
+            setTimeout(() => { window.location.href = target; }, 400);
+          } catch {
+            setTimeout(() => { window.location.href = '/dashboard'; }, 400);
+          }
         } else {
           totpMsg.className = 'msg err show';
           totpMsg.textContent = r?.error?.message || 'Invalid code.';
