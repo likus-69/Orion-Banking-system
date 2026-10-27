@@ -25,7 +25,7 @@ from app.exceptions import OrionError
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestIdMiddleware
 from app.routes import (
-    accounts, admin, analytics, auth, beneficiaries, notifications, pages,
+    accounts, admin, analytics, auth, beneficiaries, deposit, notifications, pages,
     scheduled_transfers, statements,
     totp, transactions, webhooks,
 )
@@ -149,6 +149,7 @@ def healthz(db_check: bool = False):
 app.include_router(auth.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
+app.include_router(deposit.router)
 app.include_router(statements.router)
 app.include_router(notifications.router)
 app.include_router(admin.router)

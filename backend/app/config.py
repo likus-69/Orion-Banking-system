@@ -60,6 +60,37 @@ class Settings(BaseSettings):
     # we never want email delivery issues to break a financial transaction.
     email_silent_failure: bool = True
 
+    # ── Transaction limits + fees ──────────────────────────────────
+    # Per-transaction caps (prevents instant "trillionaire" bug)
+    max_deposit_per_transaction: float = 10_000.00
+    max_withdrawal_per_transaction: float = 10_000.00
+    max_transfer_per_transaction: float = 10_000.00
+    # Daily cumulative caps (anti-money-laundering standard)
+    max_daily_deposit: float = 50_000.00
+    max_daily_withdrawal: float = 50_000.00
+    max_daily_transfer: float = 50_000.00
+    # Require KYC verification before allowing deposits
+    require_kyc_for_deposit: bool = True
+    # Transaction fee as a percentage (0.5% = 0.005) — applied on
+    # withdrawals and outgoing transfers. Deposits are free.
+    transaction_fee_percent: float = 0.005
+    # Minimum balance to maintain after withdrawal/transfer (prevents
+    # zeroing out the account completely — protects against fraud).
+    minimum_balance: float = 0.00
+
+    # ── Mobile money integration (MTN MoMo / Airtel Money) ────────
+    # Provider: "stub" (mock for dev), "mtn_momo", "airtel_money"
+    mobile_money_provider: Literal["stub", "mtn_momo", "airtel_money"] = "stub"
+    # MTN MoMo API credentials (from https://momodeveloper.mtn.com)
+    mtn_momo_api_user_id: str = ""
+    mtn_momo_api_key: str = ""
+    mtn_momo_subscription_key: str = ""
+    mtn_momo_environment: Literal["sandbox", "production"] = "sandbox"
+    # Airtel Money API credentials (from https://developers.airtel.africa)
+    airtel_client_id: str = ""
+    airtel_client_secret: str = ""
+    airtel_environment: Literal["sandbox", "production"] = "sandbox"
+
     @field_validator("secret_key")
     @classmethod
     def _warn_insecure_secret(cls, v: str) -> str:

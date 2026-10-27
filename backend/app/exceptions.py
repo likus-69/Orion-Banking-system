@@ -71,6 +71,24 @@ class InsufficientFundsError(OrionError):
     message = "Insufficient funds for this operation."
 
 
+class TransactionLimitExceededError(OrionError):
+    status_code = 422
+    error_code = "transaction_limit_exceeded"
+    message = "This transaction exceeds the allowed limit."
+
+
+class DailyLimitExceededError(OrionError):
+    status_code = 422
+    error_code = "daily_limit_exceeded"
+    message = "You have reached your daily transaction limit."
+
+
+class KycRequiredError(OrionError):
+    status_code = 403
+    error_code = "kyc_required"
+    message = "KYC verification is required before making deposits. Please submit your KYC information in Settings."
+
+
 class TransactionNotFoundError(OrionError):
     status_code = 404
     error_code = "transaction_not_found"
