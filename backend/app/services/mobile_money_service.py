@@ -118,130 +118,156 @@ class StubDepositProvider(DepositProvider):
 class MtnMoMoProvider(DepositProvider):
     """MTN MoMo (Mobile Money) API integration.
 
-    Requires:
-      - MTN_MOMO_API_USER_ID
-      - MTN_MOMO_API_KEY
-      - MTN_MOMO_SUBSCRIPTION_KEY
-      - MTN_MOMO_ENVIRONMENT (sandbox or production)
-
-    API docs: https://momodeveloper.mtn.com/
-    Flow:
-      1. POST /collection/token/ → get access token
-      2. POST /collection/v1_0/requesttopay → initiate deposit
-      3. User receives prompt on phone to approve
-      4. MTN calls our webhook → we complete the deposit
+    Full setup:
+      1. Register at https://momodeveloper.mtn.com
+      2. Subscribe to Collection API → get Primary + Secondary Key
+      3. POST /api/deposit/mtn/provision-api-user → generates UUID v4 + registers with MTN
+      4. POST /api/deposit/mtn/create-api-key → gets API Key from MTN
+      5. /api/deposit/initiate now works with real MTN MoMo
     """
 
     name = "mtn_momo"
 
     def __init__(self):
+        self.primary_key = settings.mtn_momo_primary_key
+        self.secondary_key = settings.mtn_momo_secondary_key
         self.api_user_id = settings.mtn_momo_api_user_id
         self.api_key = settings.mtn_momo_api_key
-        self.subscription_key = settings.mtn_momo_subscription_key
+        self.callback_host = settings.mtn_momo_callback_host
         self.base_url = (
             "https://sandbox.api.mtn.com"
             if settings.mtn_momo_environment == "sandbox"
             else "https://api.mtn.com"
         )
 
-    def initiate_deposit(
-        self,
-        *,
-        phone_number: str,
-        amount: float,
-        reference: str,
-        payer_message: str = "",
-    ) -> DepositResult:
-        import urllib.request
-        import urllib.error
-        import base64
+    def _check_credentials(self) -> str | None:
+        missing = []
+        if not self.primary_key:
+            missing.append("MTN_MOMO_PRIMARY_KEY")
+        if not self.api_user_id:
+            missing.append("MTN_MOMO_API_USER_ID (run POST /api/deposit/mtn/provision-api-user)")
+        if not self.api_key:
+            missing.append("MTN_MOMO_API_KEY (run POST /api/deposit/mtn/create-api-key)")
+        if missing:
+            return "Missing MTN MoMo credentials: " + ", ".join(missing)
+        return None
 
-        if not self.api_user_id or not self.api_key or not self.subscription_key:
-            log.warning("mtn_momo.missing_credentials")
-            return DepositResult(
-                status="failed",
-                reference=reference,
-                provider=self.name,
-                message="MTN MoMo credentials not configured. Set MTN_MOMO_API_USER_ID, "
-                        "MTN_MOMO_API_KEY, and MTN_MOMO_SUBSCRIPTION_KEY in .env",
-            )
+    def _get_access_token(self) -> str:
+        import urllib.request, urllib.error, base64
+        auth_string = f"{self.api_user_id}:{self.api_key}"
+        auth_b64 = base64.b64encode(auth_string.encode()).decode()
+        req = urllib.request.Request(
+            f"{self.base_url}/collection/token/",
+            method="POST",
+            headers={
+                "Authorization": f"Basic {auth_b64}",
+                "Ocp-Apim-Subscription-Key": self.primary_key,
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())["access_token"]
 
+    def provision_api_user(self) -> dict:
+        """Step 3: Generate UUID v4 + register with MTN's /v1_0/apiuser endpoint."""
+        import urllib.request, urllib.error, uuid as _uuid
+        if not self.primary_key:
+            return {"status": "error", "message": "MTN_MOMO_PRIMARY_KEY not set in .env"}
+        api_user_id = str(_uuid.uuid4())
         try:
-            # Step 1: Get access token
-            auth_string = f"{self.api_user_id}:{self.api_key}"
-            auth_b64 = base64.b64encode(auth_string.encode()).decode()
-
-            token_req = urllib.request.Request(
-                f"{self.base_url}/collection/token/",
+            req = urllib.request.Request(
+                f"{self.base_url}/v1_0/apiuser",
                 method="POST",
                 headers={
-                    "Authorization": f"Basic {auth_b64}",
-                    "Ocp-Apim-Subscription-Key": self.subscription_key,
+                    "X-Reference-Id": api_user_id,
+                    "Ocp-Apim-Subscription-Key": self.primary_key,
+                    "Content-Type": "application/json",
+                },
+                data=json.dumps({"providerCallbackHost": self.callback_host}).encode(),
+            )
+            urllib.request.urlopen(req, timeout=10)
+            return {
+                "status": "created",
+                "api_user_id": api_user_id,
+                "message": f"API User created. Add to .env:\n  MTN_MOMO_API_USER_ID={api_user_id}\nThen call POST /api/deposit/mtn/create-api-key",
+            }
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            return {"status": "error", "message": f"MTN API error ({e.code}): {body[:300]}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Request failed: {e}"}
+
+    def create_api_key(self) -> dict:
+        """Step 4: Generate API Key via MTN's /v1_0/apiuser/{id}/apikey endpoint."""
+        import urllib.request, urllib.error
+        if not self.primary_key:
+            return {"status": "error", "message": "MTN_MOMO_PRIMARY_KEY not set"}
+        if not self.api_user_id:
+            return {"status": "error", "message": "MTN_MOMO_API_USER_ID not set. Run provision-api-user first."}
+        try:
+            req = urllib.request.Request(
+                f"{self.base_url}/v1_0/apiuser/{self.api_user_id}/apikey",
+                method="POST",
+                headers={
+                    "Ocp-Apim-Subscription-Key": self.primary_key,
+                    "Content-Type": "application/json",
                 },
             )
-            with urllib.request.urlopen(token_req, timeout=10) as resp:
-                token_data = json.loads(resp.read())
-                access_token = token_data["access_token"]
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                api_key = json.loads(resp.read()).get("apiKey", "")
+                return {
+                    "status": "created",
+                    "api_key": api_key,
+                    "message": f"API Key generated. Add to .env:\n  MTN_MOMO_API_KEY={api_key}\nYou're fully provisioned!",
+                }
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            return {"status": "error", "message": f"MTN API error ({e.code}): {body[:300]}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Request failed: {e}"}
 
-            # Step 2: Initiate request-to-pay
-            x_reference_id = secrets.token_hex(16)
-            pay_req = urllib.request.Request(
+    def initiate_deposit(self, *, phone_number, amount, reference, payer_message=""):
+        """Step 5: Send request-to-pay to user's phone."""
+        import urllib.request, urllib.error, uuid as _uuid, base64
+        error = self._check_credentials()
+        if error:
+            return DepositResult(status="failed", reference=reference, provider=self.name, message=error)
+        try:
+            access_token = self._get_access_token()
+            x_reference_id = str(_uuid.uuid4())
+            phone_msisdn = phone_number.lstrip("+").replace(" ", "").replace("-", "")
+            req = urllib.request.Request(
                 f"{self.base_url}/collection/v1_0/requesttopay",
                 method="POST",
                 headers={
                     "Authorization": f"Bearer {access_token}",
                     "X-Reference-Id": x_reference_id,
-                    "X-Target-Environment": "sandbox"
-                    if settings.mtn_momo_environment == "sandbox" else "production",
-                    "Ocp-Apim-Subscription-Key": self.subscription_key,
+                    "X-Target-Environment": settings.mtn_momo_environment,
+                    "Ocp-Apim-Subscription-Key": self.primary_key,
                     "Content-Type": "application/json",
                 },
                 data=json.dumps({
                     "amount": str(amount),
-                    "currency": "USD",
+                    "currency": "EUR",
                     "externalId": reference,
-                    "payer": {
-                        "partyIdType": "MSISDN",
-                        "partyId": phone_number.lstrip("+"),
-                    },
+                    "payer": {"partyIdType": "MSISDN", "partyId": phone_msisdn},
                     "payerMessage": payer_message or f"Orion Banking deposit {reference}",
-                    "payeeNote": f"Deposit to Orion account",
+                    "payeeNote": "Deposit to Orion account",
                 }).encode(),
             )
-            urllib.request.urlopen(pay_req, timeout=10)
-
-            log.info(
-                "mtn_momo.deposit_initiated",
-                phone=phone_number,
-                amount=amount,
-                reference=reference,
-                mtn_reference=x_reference_id,
-            )
+            urllib.request.urlopen(req, timeout=10)
             return DepositResult(
-                status="pending",
-                reference=reference,
-                provider=self.name,
-                message="MTN MoMo payment prompt sent to your phone. Approve it to complete the deposit.",
+                status="pending", reference=reference, provider=self.name,
+                message="MTN MoMo payment prompt sent to your phone.",
                 provider_reference=x_reference_id,
             )
-
         except urllib.error.HTTPError as e:
-            error_body = e.read().decode("utf-8", errors="replace")
-            log.error("mtn_momo.api_error", status=e.code, body=error_body)
-            return DepositResult(
-                status="failed",
-                reference=reference,
-                provider=self.name,
-                message=f"MTN MoMo API error: {e.code} — {error_body[:200]}",
-            )
+            body = e.read().decode("utf-8", errors="replace")
+            return DepositResult(status="failed", reference=reference, provider=self.name,
+                                message=f"MTN MoMo API error: {e.code} — {body[:200]}")
         except Exception as e:
-            log.error("mtn_momo.error", error=str(e))
-            return DepositResult(
-                status="failed",
-                reference=reference,
-                provider=self.name,
-                message=f"MTN MoMo request failed: {e}",
-            )
+            return DepositResult(status="failed", reference=reference, provider=self.name,
+                                message=f"MTN MoMo request failed: {e}")
 
 
 class AirtelMoneyProvider(DepositProvider):
