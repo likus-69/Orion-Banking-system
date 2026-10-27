@@ -316,3 +316,36 @@ async def deposit_callback(
             status=payment_status,
         )
         return {"status": "failed", "reference": reference, "payment_status": payment_status}
+
+
+
+# ── MTN MoMo provisioning endpoints (setup flow) ─────────────────
+@router.get("/mtn/setup")
+def mtn_setup_instructions():
+    return {
+        "provider": "mtn_momo",
+        "steps": [
+            {"step": 1, "title": "Register at MTN MoMo Developer Portal", "url": "https://momodeveloper.mtn.com"},
+            {"step": 2, "title": "Get Primary Key + Secondary Key from the Collection API product"},
+            {"step": 3, "title": "POST /api/deposit/mtn/provision-api-user"},
+            {"step": 4, "title": "POST /api/deposit/mtn/create-api-key"},
+            {"step": 5, "title": "Ready! Deposits work via /api/deposit/initiate"}
+        ],
+        "current_config": {
+            "has_primary_key": bool(settings.mtn_momo_primary_key),
+            "has_api_user_id": bool(settings.mtn_momo_api_user_id),
+            "has_api_key": bool(settings.mtn_momo_api_key),
+        }
+    }
+
+
+@router.post("/mtn/provision-api-user")
+def mtn_provision_api_user(current_user: User = Depends(get_current_user)):
+    from app.services.mobile_money_service import MtnMoMoProvider
+    return MtnMoMoProvider().provision_api_user()
+
+
+@router.post("/mtn/create-api-key")
+def mtn_create_api_key(current_user: User = Depends(get_current_user)):
+    from app.services.mobile_money_service import MtnMoMoProvider
+    return MtnMoMoProvider().create_api_key()
