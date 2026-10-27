@@ -6,22 +6,27 @@ and an explicit DB transaction. Idempotency keys prevent duplicate transfers.
 from __future__ import annotations
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.exceptions import (
     AccountNotFoundError,
+    DailyLimitExceededError,
     InsufficientFundsError,
     InvalidAmountError,
+    KycRequiredError,
     SelfTransferError,
+    TransactionLimitExceededError,
     TransactionNotFoundError,
 )
 from app.logging_config import get_logger
 from app.models.transaction import Transaction, TransactionCategory, TransactionStatus, TransactionType
-from app.models.user import User
+from app.models.user import KycStatus, User
 from app.repositories.audit_repo import AuditLogRepository
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.transaction_repo import TransactionRepository
@@ -67,6 +72,13 @@ class TransactionService:
         if amount <= 0:
             raise InvalidAmountError()
         amt = _to_decimal(amount)
+
+        # ── Transaction limits ───────────────────────────────────
+        self._check_limits(user, amount, "deposit")
+
+        # ── KYC requirement ──────────────────────────────────────
+        if settings.require_kyc_for_deposit and user.kyc_status != KycStatus.verified:
+            raise KycRequiredError()
 
         # Lock the row for the duration of this transaction.
         locked_user = self.users.get_for_update(user.id)
@@ -117,15 +129,23 @@ class TransactionService:
             raise InvalidAmountError()
         amt = _to_decimal(amount)
 
+        # ── Transaction limits ───────────────────────────────────
+        self._check_limits(user, amount, "withdrawal")
+
         locked_user = self.users.get_for_update(user.id)
         if locked_user is None:
             raise AccountNotFoundError("Account not found.")
 
         current_balance = Decimal(str(locked_user.balance))
-        if amt > current_balance:
-            raise InsufficientFundsError()
+        fee = self._calculate_fee(amt)
+        total_deduction = amt + fee
+        if total_deduction > current_balance:
+            raise InsufficientFundsError(
+                f"Insufficient funds (need ${float(total_deduction):.2f} including ${float(fee):.2f} fee, "
+                f"balance is ${float(current_balance):.2f})"
+            )
 
-        locked_user.balance = current_balance - amt
+        locked_user.balance = current_balance - total_deduction
 
         tx = Transaction(
             reference=_generate_reference(),
@@ -176,6 +196,9 @@ class TransactionService:
             raise InvalidAmountError()
         amt = _to_decimal(amount)
 
+        # ── Transaction limits ───────────────────────────────────
+        self._check_limits(sender, amount, "transfer")
+
         # Resolve recipient FIRST (before locking sender) to avoid holding two locks too long.
         recipient = self.users.get_by_account_number(recipient_account_number)
         if recipient is None:
@@ -199,10 +222,15 @@ class TransactionService:
             raise AccountNotFoundError("Account disappeared during transfer.")
 
         sender_balance = Decimal(str(locked_sender.balance))
-        if amt > sender_balance:
-            raise InsufficientFundsError()
+        fee = self._calculate_fee(amt)
+        total_deduction = amt + fee
+        if total_deduction > sender_balance:
+            raise InsufficientFundsError(
+                f"Insufficient funds (need ${float(total_deduction):.2f} including ${float(fee):.2f} fee, "
+                f"balance is ${float(sender_balance):.2f})"
+            )
 
-        locked_sender.balance = sender_balance - amt
+        locked_sender.balance = sender_balance - total_deduction
         locked_recipient.balance = Decimal(str(locked_recipient.balance)) + amt
 
         tx = Transaction(
@@ -291,3 +319,62 @@ class TransactionService:
             level="info",
             is_read=False,
         )
+
+    def _check_limits(self, user: User, amount: float, tx_type: str) -> None:
+        """Check per-transaction + daily cumulative limits.
+
+        Raises TransactionLimitExceededError or DailyLimitExceededError.
+        """
+        # Per-transaction limit
+        if tx_type == "deposit":
+            per_tx_limit = settings.max_deposit_per_transaction
+            daily_limit = settings.max_daily_deposit
+        elif tx_type == "withdrawal":
+            per_tx_limit = settings.max_withdrawal_per_transaction
+            daily_limit = settings.max_daily_withdrawal
+        else:  # transfer
+            per_tx_limit = settings.max_transfer_per_transaction
+            daily_limit = settings.max_daily_transfer
+
+        if amount > per_tx_limit:
+            raise TransactionLimitExceededError(
+                f"This {tx_type} of ${amount:,.2f} exceeds the per-transaction limit of ${per_tx_limit:,.2f}."
+            )
+
+        # Daily cumulative limit — sum all transactions of this type today
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        if today_start.tzinfo is not None:
+            today_start = today_start.replace(tzinfo=None)  # SQLite naive
+
+        tx_type_enum = {
+            "deposit": TransactionType.deposit,
+            "withdrawal": TransactionType.withdrawal,
+            "transfer": TransactionType.transfer,
+        }.get(tx_type)
+
+        if tx_type_enum:
+            daily_total = (
+                self.db.query(Transaction)
+                .filter(
+                    Transaction.type == tx_type_enum,
+                    Transaction.from_account_id == user.id if tx_type != "deposit" else Transaction.to_account_id == user.id,
+                    Transaction.created_at >= today_start,
+                    Transaction.status == TransactionStatus.completed,
+                )
+                .with_entities(func.sum(Transaction.amount))
+                .scalar()
+            ) or 0
+            daily_total = float(daily_total)
+            if daily_total + amount > daily_limit:
+                remaining = max(0, daily_limit - daily_total)
+                raise DailyLimitExceededError(
+                    f"You have reached your daily {tx_type} limit of ${daily_limit:,.2f}. "
+                    f"You've used ${daily_total:,.2f} today; remaining: ${remaining:,.2f}."
+                )
+
+    def _calculate_fee(self, amount: Decimal) -> Decimal:
+        """Calculate transaction fee based on the configured percentage."""
+        if settings.transaction_fee_percent <= 0:
+            return Decimal("0")
+        fee = (amount * Decimal(str(settings.transaction_fee_percent))).quantize(Decimal("0.01"))
+        return fee

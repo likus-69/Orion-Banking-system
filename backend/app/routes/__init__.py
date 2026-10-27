@@ -7,6 +7,7 @@ from app.routes import (
     analytics,
     auth,
     beneficiaries,
+    deposit,
     notifications,
     pages,
     scheduled_transfers,
@@ -17,7 +18,7 @@ from app.routes import (
 )
 
 __all__ = [
-    "accounts", "admin", "analytics", "auth", "beneficiaries", "notifications", "pages",
+    "accounts", "admin", "analytics", "auth", "beneficiaries", "deposit", "notifications", "pages",
     "scheduled_transfers", "statements", "totp",
     "transactions", "webhooks",
 ]
