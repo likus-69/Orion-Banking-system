@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.models.audit_log import AuditLog
 from app.models.beneficiary import Beneficiary, BeneficiaryCategory
 from app.models.notification import Notification
+from app.models.pending_deposit import PendingDeposit, PendingDepositStatus
 from app.models.scheduled_transfer import (
     ExecutionStatus,
     ScheduledTransfer,
@@ -27,6 +28,8 @@ __all__ = [
     "DeliveryStatus",
     "ExecutionStatus",
     "Notification",
+    "PendingDeposit",
+    "PendingDepositStatus",
     "RefreshToken",
     "ScheduleStatus",
     "ScheduleType",
