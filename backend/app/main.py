@@ -163,7 +163,8 @@ app.include_router(pages.router)  # Jinja2 HTML routes — last so /api takes pr
 # ────────────────────────── Root redirect ──────────────────────────
 @app.get("/", include_in_schema=False)
 def root_redirect():
-    """Send users to /login by default; /dashboard if logged in (front-end decides)."""
+    """Send to /login by default. The JS in /login checks the role and
+    redirects admins to /admin, customers to /dashboard."""
     from fastapi.responses import RedirectResponse
 
     return RedirectResponse(url="/login", status_code=302)
