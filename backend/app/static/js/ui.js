@@ -173,6 +173,12 @@
     });
   });
 
+  // ── Auth header helper ──────────────────────────────────────
+  function authHeaders() {
+    const token = localStorage.getItem('orion_access_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
   // ── Export ────────────────────────────────────────────────
   window.OrionUI = {
     toast,
@@ -181,5 +187,6 @@
     fmtDateShort,
     confirmModal,
     requireAuth,
+    authHeaders,
   };
 })();

@@ -65,10 +65,7 @@
     if (pending) {
       document.getElementById('trAcc').value = pending;
       localStorage.removeItem('pending_transfer_recipient');
-    }
-
-    function authHeaders() {
-      return { Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }` };
     }
 
     async function loadBalance() {
@@ -97,7 +94,7 @@
         return;
       }
       searchTimer = setTimeout(async () => {
-        const results = await fetch(`/api/beneficiaries/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() }).then((r) => r.json());
+        const results = await fetch(`/api/beneficiaries/search?q=${encodeURIComponent(q)}`, { headers: OrionUI.authHeaders() }).then((r) => r.json());
         if (!results || results.length === 0) {
           suggestions.innerHTML = '';
           return;
@@ -192,7 +189,7 @@
     });
 
     function offerSaveBeneficiary(acc) {
-      fetch(`/api/beneficiaries/search?q=${encodeURIComponent(acc)}`, { headers: authHeaders() })
+      fetch(`/api/beneficiaries/search?q=${encodeURIComponent(acc)}`, { headers: OrionUI.authHeaders() })
         .then((r) => r.json())
         .then((existing) => {
           if (existing && existing.some((b) => b.recipient_account_number === acc)) {
@@ -215,7 +212,7 @@
           saveBtn.addEventListener('click', async () => {
             const r = await fetch('/api/beneficiaries/save-from-transfer', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...authHeaders() },
+              headers: { 'Content-Type': 'application/json', ...OrionUI.authHeaders() },
               body: JSON.stringify({ recipient_account_number: acc }),
             }).then((r) => r.json());
             if (r && r.id) {

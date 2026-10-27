@@ -147,20 +147,17 @@
       const d = document.createElement('div');
       d.textContent = s == null ? '' : String(s);
       return d.innerHTML;
-    }
-
-    function authHeaders() {
-      return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    }` };
     }
 
     document.getElementById('pauseBtn').addEventListener('click', async () => {
-      await fetch(`/api/scheduled-transfers/${scheduleId}/pause`, { method: 'POST', headers: authHeaders() });
+      await fetch(`/api/scheduled-transfers/${scheduleId}/pause`, { method: 'POST', headers: OrionUI.authHeaders() });
       OrionUI.toast('Paused', 'success', 1500);
       load();
     });
 
     document.getElementById('resumeBtn').addEventListener('click', async () => {
-      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/resume`, { method: 'POST', headers: authHeaders() });
+      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/resume`, { method: 'POST', headers: OrionUI.authHeaders() });
       if (r.ok) {
         OrionUI.toast('Resumed', 'success', 1500);
         load();
@@ -178,7 +175,7 @@
         danger: true,
       });
       if (!ok) return;
-      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/cancel`, { method: 'POST', headers: authHeaders() });
+      const r = await fetch(`/api/scheduled-transfers/${scheduleId}/cancel`, { method: 'POST', headers: OrionUI.authHeaders() });
       if (r.status === 204) {
         OrionUI.toast('Schedule cancelled', 'success', 2000);
         setTimeout(() => { window.location.href = '/scheduled-transfers'; }, 1000);

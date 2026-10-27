@@ -102,7 +102,7 @@
 
     async function loadWebhooks() {
       try {
-        const list = await fetch('/api/webhooks').then((r) => r.json());
+        const list = await fetch('/api/webhooks', { headers: OrionUI.authHeaders() }).then((r) => r.json());
         render(list);
       } catch {
         OrionUI.toast('Could not load webhooks.', 'error');
@@ -161,7 +161,7 @@
       try {
         const r = await fetch('/api/webhooks', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...OrionUI.authHeaders() },
           body: JSON.stringify({ name, url, subscribed_events: events }),
         }).then((r) => r.json());
         if (r && r.id) {
