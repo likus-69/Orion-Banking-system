@@ -1,5 +1,8 @@
-"""Deposit API routes — mobile money (MTN/Airtel) + webhook callbacks."""
+"""Deposit API routes — mobile money (MTN/Airtel) + webhook callbacks + status polling."""
 from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from pydantic import BaseModel, Field
@@ -7,35 +10,46 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.deps import get_current_user, get_db
-from app.models.transaction import TransactionStatus, TransactionType
+from app.exceptions import OrionError, ValidationError
+from app.logging_config import get_logger
+from app.models.pending_deposit import PendingDeposit, PendingDepositStatus
 from app.models.user import User
 from app.services.mobile_money_service import DepositResult, get_deposit_provider
 from app.services.transaction_service import TransactionService
+
+log = get_logger(__name__)
 
 router = APIRouter(prefix="/api/deposit", tags=["deposit"])
 
 
 class InitiateDepositRequest(BaseModel):
-    """Initiate a mobile money deposit — user enters phone number + amount."""
-
-    phone_number: str = Field(..., min_length=10, max_length=15, description="Phone number with country code, e.g. +256700000000")
+    phone_number: str = Field(..., min_length=10, max_length=15, description="e.g. +256700000000")
     amount: float = Field(..., gt=0, le=settings.max_deposit_per_transaction)
     memo: str | None = Field(None, max_length=500)
 
 
 class InitiateDepositResponse(BaseModel):
-    status: str  # "pending" | "success" | "failed"
+    status: str
     reference: str
-    provider: str  # "stub" | "mtn_momo" | "airtel_money"
+    provider: str
     message: str
     provider_reference: str | None = None
 
 
 class ManualDepositRequest(BaseModel):
-    """For backward compatibility — manual deposit (no mobile money)."""
-
     amount: float = Field(..., gt=0, le=settings.max_deposit_per_transaction)
     memo: str | None = Field(None, max_length=500)
+
+
+class DepositStatusResponse(BaseModel):
+    reference: str
+    status: str  # pending | completed | failed | expired
+    amount: float
+    provider: str
+    phone_number: str
+    created_at: str
+    completed_at: str | None = None
+    failure_reason: str | None = None
 
 
 @router.post("/initiate", response_model=InitiateDepositResponse)
@@ -46,13 +60,11 @@ def initiate_mobile_money_deposit(
 ):
     """Initiate a mobile money deposit.
 
-    This sends a payment prompt to the user's phone. Once they approve
-    (on their MTN/Airtel app), the provider calls our webhook callback
-    and we complete the deposit.
+    Sends a payment prompt to the user's phone. Once they approve,
+    the provider calls our webhook → we complete the deposit.
 
-    To test without real credentials:
-      Set MOBILE_MONEY_PROVIDER=stub in .env — the stub provider returns
-      "pending" immediately, simulating the flow.
+    With the stub provider (default), status stays 'pending' and you
+    can simulate completion by calling POST /api/deposit/callback/stub.
     """
     import secrets as _secrets
 
@@ -66,12 +78,78 @@ def initiate_mobile_money_deposit(
         payer_message=payload.memo or f"Orion Banking deposit",
     )
 
+    if result.status == "failed":
+        return InitiateDepositResponse(
+            status="failed",
+            reference=result.reference,
+            provider=result.provider,
+            message=result.message,
+            provider_reference=result.provider_reference,
+        )
+
+    # Store the pending deposit
+    pending = PendingDeposit(
+        user_id=current_user.id,
+        reference=reference,
+        provider_reference=result.provider_reference,
+        provider=result.provider,
+        amount=payload.amount,
+        phone_number=payload.phone_number,
+        memo=payload.memo,
+        status=PendingDepositStatus.pending,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+    )
+    db.add(pending)
+    db.commit()
+
+    log.info(
+        "deposit.initiated",
+        user_id=current_user.id,
+        reference=reference,
+        provider=result.provider,
+        amount=payload.amount,
+        phone=payload.phone_number,
+    )
+
     return InitiateDepositResponse(
         status=result.status,
         reference=result.reference,
         provider=result.provider,
         message=result.message,
         provider_reference=result.provider_reference,
+    )
+
+
+@router.get("/status/{reference}", response_model=DepositStatusResponse)
+def get_deposit_status(
+    reference: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check the status of a pending mobile money deposit.
+
+    The frontend polls this every 5s after initiating a deposit.
+    """
+    pending = (
+        db.query(PendingDeposit)
+        .filter(
+            PendingDeposit.reference == reference,
+            PendingDeposit.user_id == current_user.id,
+        )
+        .first()
+    )
+    if pending is None:
+        raise ValidationError("Deposit not found.")
+
+    return DepositStatusResponse(
+        reference=pending.reference,
+        status=pending.status.value if hasattr(pending.status, "value") else str(pending.status),
+        amount=float(pending.amount),
+        provider=pending.provider,
+        phone_number=pending.phone_number,
+        created_at=pending.created_at.isoformat(),
+        completed_at=pending.completed_at.isoformat() if pending.completed_at else None,
+        failure_reason=pending.failure_reason,
     )
 
 
@@ -85,11 +163,8 @@ def manual_deposit(
 ):
     """Manual deposit (teller / bank transfer).
 
-    This is the 'old' deposit endpoint — kept for backward compatibility.
-    Subject to the same limits + KYC checks.
+    Subject to the same limits + KYC checks as mobile money deposits.
     """
-    from app.deps import get_request_meta
-
     meta = {
         "ip_address": request.client.host if request.client else None,
         "user_agent": request.headers.get("user-agent"),
@@ -124,40 +199,27 @@ async def deposit_callback(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Webhook callback endpoint for mobile money providers.
+    """Webhook callback — called by MTN MoMo / Airtel Money when payment is confirmed.
 
-    MTN MoMo and Airtel Money will call this endpoint when a deposit
-    is confirmed (user approved the payment prompt on their phone).
-
-    The provider sends a POST with the transaction status. We verify
-    the signature, then complete the deposit by crediting the user's
-    account.
+    For the stub provider, you can call this manually to simulate completion:
+      POST /api/deposit/callback/stub
+      Body: {"reference": "DEP-XXXX-YYYY", "status": "SUCCESSFUL", "amount": 100}
     """
-    from app.logging_config import get_logger
-
-    log = get_logger("deposit.callback")
-
     body = await request.body()
-    signature = request.headers.get("X-Signature", "")
 
     log.info(
         "deposit.callback_received",
         provider=provider,
-        signature_present=bool(signature),
         body_length=len(body),
     )
 
     try:
-        import json
-
         payload = json.loads(body)
     except Exception:
         log.warning("deposit.callback_invalid_json", provider=provider)
         return {"status": "error", "message": "Invalid JSON"}
 
     # Extract reference + status from the callback payload
-    # MTN MoMo format: {"externalId": "...", "status": "SUCCESSFUL", ...}
-    # Airtel format: {"transaction": {"id": "...", "status": "SUCCESS", ...}}
     reference = None
     payment_status = None
     amount = None
@@ -172,40 +234,85 @@ async def deposit_callback(
         payment_status = tx_data.get("status", "").upper()
         amount = float(tx_data.get("amount", 0))
     else:
-        # Stub provider — simulate success
+        # Stub — manual simulation
         reference = payload.get("reference")
-        payment_status = "SUCCESSFUL"
+        payment_status = payload.get("status", "SUCCESSFUL").upper()
         amount = float(payload.get("amount", 0))
 
     if not reference:
         log.warning("deposit.callback_missing_reference", provider=provider)
         return {"status": "error", "message": "Missing reference"}
 
-    # If payment was successful, find the pending deposit and complete it
+    # Find the pending deposit
+    pending = (
+        db.query(PendingDeposit)
+        .filter(PendingDeposit.reference == reference)
+        .first()
+    )
+    if pending is None:
+        log.warning("deposit.callback_pending_not_found", reference=reference)
+        return {"status": "error", "message": "Pending deposit not found"}
+
+    if pending.status != PendingDepositStatus.pending:
+        log.info("deposit.callback_already_processed", reference=reference, status=pending.status)
+        return {"status": "ok", "message": "Already processed", "final_status": pending.status.value}
+
+    # Save the callback payload for debugging
+    pending.callback_payload = json.dumps(payload, indent=2)
+
     if payment_status in ("SUCCESSFUL", "SUCCESS", "COMPLETED"):
-        # Look up the pending transaction by reference
-        from app.models.transaction import Transaction
+        # Complete the deposit — credit the user's account
         from app.models.user import User as UserModel
 
-        # In a real implementation, we'd store the pending deposit in a
-        # separate table. For now, we look up the user by the reference
-        # pattern and complete the deposit.
-        # The reference format is: DEP-XXXX-YYYY
-        # The user info would be stored in a pending_deposits table.
-        # For the stub provider, we'll just log that it was received.
+        user = db.query(UserModel).filter(UserModel.id == pending.user_id).first()
+        if user is None:
+            log.error("deposit.callback_user_not_found", user_id=pending.user_id)
+            return {"status": "error", "message": "User not found"}
 
-        log.info(
-            "deposit.callback_success",
-            provider=provider,
-            reference=reference,
-            amount=amount,
-        )
-        return {"status": "success", "reference": reference}
+        # Use TransactionService to create the actual deposit transaction
+        service = TransactionService(db)
+        try:
+            tx = service.deposit(
+                user,
+                pending.amount,
+                memo=pending.memo or f"Mobile money deposit via {pending.provider}",
+                ip_address=None,
+                request_id=reference,
+            )
+            pending.status = PendingDepositStatus.completed
+            pending.transaction_id = tx.id
+            pending.completed_at = datetime.now(timezone.utc)
+            db.commit()
+
+            log.info(
+                "deposit.callback_completed",
+                reference=reference,
+                transaction_id=tx.id,
+                tx_ref=tx.reference,
+                amount=pending.amount,
+            )
+            return {"status": "success", "reference": reference, "transaction_reference": tx.reference}
+
+        except OrionError as exc:
+            pending.status = PendingDepositStatus.failed
+            pending.failure_reason = exc.message
+            db.commit()
+            log.warning(
+                "deposit.callback_failed",
+                reference=reference,
+                error=exc.message,
+            )
+            return {"status": "failed", "reference": reference, "error": exc.message}
+
     else:
+        # Payment failed / declined / timed out
+        pending.status = PendingDepositStatus.failed
+        pending.failure_reason = f"Provider returned status: {payment_status}"
+        db.commit()
+
         log.warning(
-            "deposit.callback_failed",
-            provider=provider,
+            "deposit.callback_payment_failed",
             reference=reference,
             status=payment_status,
         )
-        return {"status": "failed", "reference": reference}
+        return {"status": "failed", "reference": reference, "payment_status": payment_status}
