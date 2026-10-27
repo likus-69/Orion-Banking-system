@@ -235,7 +235,7 @@
       try {
         const r = await fetch('/api/accounts/me/notification-prefs', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...OrionUI.authHeaders() },
           body: JSON.stringify(payload),
         }).then((r) => r.json());
         if (r && r.id) {

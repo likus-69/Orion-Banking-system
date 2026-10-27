@@ -71,7 +71,7 @@
       try {
         const me = await OrionAPI.me();
         if (me.role !== 'admin' && me.role !== 'customer') return;  // sanity
-        const w = await fetch(`/api/webhooks/${webhookId}`).then((r) => r.json());
+        const w = await fetch(`/api/webhooks/${webhookId}`, { headers: OrionUI.authHeaders() }).then((r) => r.json());
         if (!w || !w.id) {
           OrionUI.toast('Webhook not found.', 'error');
           setTimeout(() => { window.location.href = '/webhooks'; }, 1500);
@@ -105,7 +105,7 @@
 
     async function loadDeliveries() {
       try {
-        const list = await fetch(`/api/webhooks/${webhookId}/deliveries`).then((r) => r.json());
+        const list = await fetch(`/api/webhooks/${webhookId}/deliveries`, { headers: OrionUI.authHeaders() }).then((r) => r.json());
         const ul = document.getElementById('deliveryList');
         ul.innerHTML = '';
         if (list.length === 0) {
@@ -147,7 +147,7 @@
         danger: false,
       }).then((ok) => {
         if (!ok) return;
-        fetch(`/api/webhooks/deliveries/${d.id}/redeliver`, { method: 'POST' })
+        fetch(`/api/webhooks/deliveries/${d.id}/redeliver`, { method: 'POST', headers: OrionUI.authHeaders() })
           .then(() => {
             OrionUI.toast('Redelivery scheduled', 'success', 2000);
             setTimeout(loadDeliveries, 1000);
@@ -162,7 +162,7 @@
     }
 
     document.getElementById('testPingBtn').addEventListener('click', async () => {
-      const r = await fetch(`/api/webhooks/${webhookId}/test`, { method: 'POST' }).then((r) => r.json());
+      const r = await fetch(`/api/webhooks/${webhookId}/test`, { method: 'POST', headers: OrionUI.authHeaders() }).then((r) => r.json());
       if (r && r.id) {
         OrionUI.toast('Test ping sent', 'success', 2000);
         setTimeout(loadDeliveries, 1500);
@@ -179,7 +179,7 @@
         danger: true,
       });
       if (!ok) return;
-      const r = await fetch(`/api/webhooks/${webhookId}/rotate-secret`, { method: 'POST' }).then((r) => r.json());
+      const r = await fetch(`/api/webhooks/${webhookId}/rotate-secret`, { method: 'POST', headers: OrionUI.authHeaders() }).then((r) => r.json());
       if (r && r.secret) {
         const msg = document.getElementById('actionMsg');
         msg.className = 'msg ok show';
@@ -193,7 +193,7 @@
       const next = current === 'active' ? 'paused' : 'active';
       const r = await fetch(`/api/webhooks/${webhookId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...OrionUI.authHeaders() },
         body: JSON.stringify({ status: next }),
       }).then((r) => r.json());
       if (r && r.id) {
@@ -210,7 +210,7 @@
         danger: true,
       });
       if (!ok) return;
-      const r = await fetch(`/api/webhooks/${webhookId}`, { method: 'DELETE' });
+      const r = await fetch(`/api/webhooks/${webhookId}`, { method: 'DELETE', headers: OrionUI.authHeaders() });
       if (r.status === 204) {
         OrionUI.toast('Webhook deleted', 'success', 1500);
         setTimeout(() => { window.location.href = '/webhooks'; }, 1000);

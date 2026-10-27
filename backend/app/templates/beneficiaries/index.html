@@ -69,15 +69,12 @@
   (function () {
     if (!OrionUI.requireAuth('/login')) return;
 
-    let allBeneficiaries = [];
-
-    function authHeaders() {
-      return { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('orion_access_token')}` };
+    let allBeneficiaries = [];` };
     }
 
     async function loadBeneficiaries() {
       try {
-        allBeneficiaries = await fetch('/api/beneficiaries', { headers: authHeaders() }).then((r) => r.json());
+        allBeneficiaries = await fetch('/api/beneficiaries', { headers: OrionUI.authHeaders() }).then((r) => r.json());
         render(allBeneficiaries);
       } catch {
         OrionUI.toast('Could not load beneficiaries.', 'error');
@@ -144,7 +141,7 @@
             danger: true,
           });
           if (!ok) return;
-          const r = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE', headers: authHeaders() });
+          const r = await fetch(`/api/beneficiaries/${id}`, { method: 'DELETE', headers: OrionUI.authHeaders() });
           if (r.status === 204) {
             OrionUI.toast('Deleted', 'success', 1500);
             loadBeneficiaries();
@@ -192,7 +189,7 @@
         };
         const r = await fetch(`/api/beneficiaries/${id}`, {
           method: 'PATCH',
-          headers: authHeaders(),
+          headers: OrionUI.authHeaders(),
           body: JSON.stringify(payload),
         }).then((r) => r.json());
         if (r && r.id) {
@@ -236,7 +233,7 @@
       try {
         const r = await fetch('/api/beneficiaries', {
           method: 'POST',
-          headers: authHeaders(),
+          headers: OrionUI.authHeaders(),
           body: JSON.stringify({ recipient_account_number: acc, nickname, category }),
         }).then((r) => r.json());
         if (r && r.id) {
