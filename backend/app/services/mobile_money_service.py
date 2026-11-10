@@ -135,7 +135,7 @@ class MtnMoMoProvider(DepositProvider):
         self.api_key = settings.mtn_momo_api_key
         self.callback_host = settings.mtn_momo_callback_host
         self.base_url = (
-            "https://sandbox.api.mtn.com"
+            "https://sandbox.momodeveloper.mtn.com"
             if settings.mtn_momo_environment == "sandbox"
             else "https://api.mtn.com"
         )
